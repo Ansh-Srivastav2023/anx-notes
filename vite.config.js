@@ -4,8 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  // Ensure Vite root is explicit
-  base: 'anx-notes',
+  base: '/anx-notes/',
   root: __dirname,
   build: {
     outDir: 'dist',
