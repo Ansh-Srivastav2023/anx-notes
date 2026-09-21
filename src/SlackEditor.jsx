@@ -352,6 +352,11 @@ export default function SlackEditor({
       SlashCommands,
       TableCell,
     ],
+    editorProps: {
+    attributes: {
+        spellcheck: 'false', // 👈 Disables browser red squiggly underlines
+      },
+    },
     content: initialContent,
     onUpdate: ({ editor }) => {
       onChange?.(editor.getHTML());
