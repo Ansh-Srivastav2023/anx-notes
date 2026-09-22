@@ -147,7 +147,13 @@ export default function ShortcutsHelp({ open, onClose, anchorRef }) {
       </div>
 
       <footer className="shortcuts-popover-footer">
-        Type in the editor to apply · <kbd className="shortcuts-kbd">{labels.Mod}</kbd>+<kbd className="shortcuts-kbd">/</kbd> to toggle this panel
+        Type in the editor to apply ·{' '}
+        <kbd className="shortcuts-kbd">{labels.Mod}</kbd>
+        <kbd className="shortcuts-kbd">K</kbd> palette ·{' '}
+        <kbd className="shortcuts-kbd">{labels.Mod}</kbd>
+        <kbd className="shortcuts-kbd">F</kbd> find ·{' '}
+        <kbd className="shortcuts-kbd">{labels.Mod}</kbd>
+        <kbd className="shortcuts-kbd">/</kbd> this panel
       </footer>
     </div>
   );

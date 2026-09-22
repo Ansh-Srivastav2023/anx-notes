@@ -38,45 +38,71 @@ export const SlashCommands = Extension.create({
             .slice(0, 10);
         },
         render: () => {
-          let component;
-          let popup;
+  let component;
+  let popup;
 
-          return {
-            onStart: (props) => {
-              component = new ReactRenderer(SlashCommandsList, {
-                props,
-                editor: props.editor,
-              });
-              if (!props.clientRect) return;
-              popup = tippy('body', {
-                getReferenceClientRect: props.clientRect,
-                appendTo: () => document.body,
-                content: component.element,
-                showOnCreate: true,
-                interactive: true,
-                trigger: 'manual',
-                placement: 'bottom-start',
-                maxWidth: 'none',
-              });
+  return {
+    onStart: (props) => {
+      component = new ReactRenderer(SlashCommandsList, {
+        props,
+        editor: props.editor,
+      });
+      if (!props.clientRect) return;
+
+      // Decide placement before creating tippy — don't rely on flip
+      const rect = props.clientRect();
+      const needed = 320;                                   // approx menu height
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const placement =
+        spaceBelow < needed && spaceAbove > spaceBelow
+          ? 'top-start'
+          : 'bottom-start';
+
+      popup = tippy('body', {
+        getReferenceClientRect: props.clientRect,
+        appendTo: () => document.body,
+        content: component.element,
+        showOnCreate: true,
+        interactive: true,
+        trigger: 'manual',
+        placement,                                          // <-- decided above
+        maxWidth: 'none',
+        popperOptions: {
+          strategy: 'fixed',
+          modifiers: [
+            { name: 'flip', enabled: false },               // <-- we handle it
+            {
+              name: 'preventOverflow',
+              options: {
+                boundary: 'viewport',
+                rootBoundary: 'viewport',
+                padding: 8,
+                altAxis: true,
+              },
             },
-            onUpdate: (props) => {
-              component.updateProps(props);
-              if (!props.clientRect) return;
-              popup[0].setProps({ getReferenceClientRect: props.clientRect });
-            },
-            onKeyDown: (props) => {
-              if (props.event.key === 'Escape') {
-                popup[0].hide();
-                return true;
-              }
-              return component.ref?.onKeyDown(props) ?? false;
-            },
-            onExit: () => {
-              popup[0].destroy();
-              component.destroy();
-            },
-          };
+          ],
         },
+      });
+    },
+    onUpdate: (props) => {
+      component.updateProps(props);
+      if (!props.clientRect) return;
+      popup[0].setProps({ getReferenceClientRect: props.clientRect });
+    },
+    onKeyDown: (props) => {
+      if (props.event.key === 'Escape') {
+        popup[0].hide();
+        return true;
+      }
+      return component.ref?.onKeyDown(props) ?? false;
+    },
+    onExit: () => {
+      popup[0].destroy();
+      component.destroy();
+    },
+  };
+},
       }),
     ];
   },

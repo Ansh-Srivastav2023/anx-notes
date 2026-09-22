@@ -2,7 +2,6 @@ import { Extension, textInputRule, InputRule } from '@tiptap/core';
 
 /* ------------------------------------------------------------------ */
 /*  Superscript helper                                                */
-/*  Maps every digit + sign to its Unicode superscript glyph.         */
 /* ------------------------------------------------------------------ */
 const SUPERSCRIPT_MAP = {
   '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
@@ -17,15 +16,6 @@ function toSuperscript(str) {
     .join('');
 }
 
-/**
- * `^` followed by an optional sign and one or more digits →
- * the same sequence with every character raised.
- *
- *   ^2   →  ²
- *   ^12  →  ¹²
- *   ^-3  →  ⁻³
- *   ^+45 →  ⁺⁴⁵
- */
 const superscriptRule = new InputRule({
   find: /\^([+-]?\d+)$/,
   handler: ({ state, range, match }) => {
@@ -38,9 +28,20 @@ const superscriptRule = new InputRule({
 });
 
 /* ------------------------------------------------------------------ */
-/*  Shortcut groups (also used by the help popover)                   */
+/*  Type-to-convert shortcuts                                         */
+/*  Entries WITH a `find` regex become live input rules.              */
+/*  Entries WITHOUT `find` are display-only (they show in the help    */
+/*  popover but the actual conversion lives elsewhere).               */
 /* ------------------------------------------------------------------ */
 export const SHORTCUT_GROUPS = [
+  {
+    title: 'Commands',
+    items: [
+      { input: '/',    output: 'Slash command menu' },
+      { input: '[] ',  output: 'Checklist' },
+      { input: '[ ] ', output: 'Checklist' },
+    ],
+  },
   {
     title: 'Arrows',
     items: [
@@ -50,13 +51,13 @@ export const SHORTCUT_GROUPS = [
       { input: '=>',  output: '⇛', find: /=>$/  },
     ],
   },
-    {
-        title: 'Punctuation',
-        items: [
-            { input: '...',  output: '…',  find: /\.\.\.$/  },
-            { input: '-- ',  output: '— ', find: /-- $/    },
-        ],
-    },
+  {
+    title: 'Punctuation',
+    items: [
+      { input: '...', output: '…',  find: /\.\.\.$/ },
+      { input: '-- ', output: '— ', find: /-- $/    },
+    ],
+  },
   {
     title: 'Math & comparison',
     items: [
@@ -119,7 +120,9 @@ export const SHORTCUT_GROUPS = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Keyboard shortcut groups (display only — for the help popover)    */
+/*  Keyboard shortcuts                                                */
+/*  `Mod` = ⌘ on Mac / Ctrl elsewhere.                                */
+/*  The popover swaps placeholders for real key caps.                 */
 /* ------------------------------------------------------------------ */
 export const KEYBOARD_GROUPS = [
   {
@@ -135,13 +138,14 @@ export const KEYBOARD_GROUPS = [
   {
     title: 'Blocks',
     items: [
-      { keys: ['Mod', 'Alt', '1'], output: 'Heading 1' },
-      { keys: ['Mod', 'Alt', '2'], output: 'Heading 2' },
-      { keys: ['Mod', 'Alt', '3'], output: 'Heading 3' },
+      { keys: ['Mod', 'Alt', '1'],   output: 'Heading 1' },
+      { keys: ['Mod', 'Alt', '2'],   output: 'Heading 2' },
+      { keys: ['Mod', 'Alt', '3'],   output: 'Heading 3' },
       { keys: ['Mod', 'Shift', '8'], output: 'Bullet list' },
       { keys: ['Mod', 'Shift', '7'], output: 'Numbered list' },
+      { keys: ['Mod', 'Shift', '9'], output: 'Checklist' },
       { keys: ['Mod', 'Shift', 'B'], output: 'Quote' },
-      { keys: ['Mod', 'Alt', 'C'], output: 'Code block' },
+      { keys: ['Mod', 'Alt', 'C'],   output: 'Code block' },
     ],
   },
   {
@@ -154,22 +158,31 @@ export const KEYBOARD_GROUPS = [
     ],
   },
   {
-    title: 'Tables & editing',
+    title: 'Tables & lists',
     items: [
-      { keys: ['Mod', 'Alt', 'T'],  output: 'Insert table' },
-      { keys: ['Tab'],              output: 'Indent (in list)' },
-      { keys: ['Shift', 'Tab'],     output: 'Outdent (in list)' },
-      { keys: ['Mod', 'Z'],         output: 'Undo' },
+      { keys: ['Mod', 'Alt', 'T'], output: 'Insert table' },
+      { keys: ['Tab'],             output: 'Indent (in list)' },
+      { keys: ['Shift', 'Tab'],    output: 'Outdent (in list)' },
+    ],
+  },
+  {
+    title: 'Editor & navigation',
+    items: [
+      { keys: ['Mod', 'K'],          output: 'Command palette' },
+      { keys: ['Mod', 'F'],          output: 'Find & replace' },
+      { keys: ['Mod', '/'],          output: 'This panel' },
+      { keys: ['Mod', 'S'],          output: 'Save now' },
+      { keys: ['Mod', 'N'],          output: 'New document' },
+      { keys: ['Mod', 'Z'],          output: 'Undo' },
       { keys: ['Mod', 'Shift', 'Z'], output: 'Redo' },
-      { keys: ['Mod', '/'],         output: 'Open this panel' },
     ],
   },
 ];
 
 /* ------------------------------------------------------------------ */
 /*  Build Tiptap rules                                                */
-/*  Static replacements use textInputRule; the dynamic superscript    */
-/*  rule uses InputRule so it works for any digit sequence.           */
+/*  Static replacements use textInputRule. The dynamic superscript    */
+/*  rule uses InputRule so any digit sequence works.                  */
 /* ------------------------------------------------------------------ */
 const allRules = SHORTCUT_GROUPS
   .flatMap((group) =>

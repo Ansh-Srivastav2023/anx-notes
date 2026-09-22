@@ -66,6 +66,22 @@ export const slashCommandItems = [
       editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
   },
   {
+  title: 'Checklist',
+  subtitle: 'To-do list with checkboxes',
+  keywords: ['check', 'todo', 'task', 'checklist', 'checkbox'],
+  icon: (
+    <Svg>
+      <path d="m3 7 2 2 4-4" />
+      <path d="m3 17 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </Svg>
+  ),
+  command: ({ editor, range }) =>
+    editor.chain().focus().deleteRange(range).toggleTaskList().run(),
+},
+  {
     title: 'Quote',
     subtitle: 'Blockquote',
     keywords: ['quote', 'blockquote', 'citation'],

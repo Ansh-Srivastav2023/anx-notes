@@ -1,11 +1,5 @@
 import { Extension } from '@tiptap/core';
 
-/**
- * Remembers the last font family / size chosen and re-applies it
- * whenever the cursor enters an empty textblock (paragraph, heading,
- * or empty table cell). This gives the editor a "current typing
- * style" feel — like Word or Google Docs.
- */
 export const StickyMarks = Extension.create({
   name: 'stickyMarks',
 
@@ -16,42 +10,51 @@ export const StickyMarks = Extension.create({
     };
   },
 
-  onCreate() {
-    const editor = this.editor;
+  onTransaction({ editor, transaction }) {
+    // Only process if selection actually changed
+    if (!transaction.selectionSet) return;
 
-    editor.on('selectionUpdate', () => {
-      const { state } = editor;
-      const { selection } = state;
-      const { empty, $from } = selection;
+    const { state } = editor;
+    const { selection } = state;
+    const { empty, $from } = selection;
 
-      // Only react to collapsed cursors
-      if (!empty) return;
+    if (!empty) return;
 
-      const parent = $from.parent;
-      if (!parent.isTextblock) return;
+    const parent = $from.parent;
 
-      // Only when the block is still empty
-      if (parent.content.size > 0) return;
+    // Must be inside an editable textblock (paragraph, heading, table cell wrapper)
+    if (!parent.isTextblock) return;
 
-      const { fontFamily, fontSize } = editor.storage.stickyMarks;
+    // Check if current node is a code block or has code mark
+    const isCode = parent.type.name === 'codeBlock' || $from.marks().some(m => m.type.name === 'code');
+    if (isCode) return;
 
-      // Nothing sticky to apply
-      if (!fontFamily && !fontSize) return;
+    const { fontFamily, fontSize } = editor.storage.stickyMarks;
+    if (!fontFamily && !fontSize) return;
 
-      const attrs = editor.getAttributes('textStyle');
-      const chain = editor.chain();
+    // Get current active attributes at cursor
+    const attrs = editor.getAttributes('textStyle');
+    let chain = editor.chain();
+    let needsRun = false;
 
-      let needsRun = false;
-      if (fontFamily && attrs.fontFamily !== fontFamily) {
-        chain.setFontFamily(fontFamily);
-        needsRun = true;
-      }
-      if (fontSize && attrs.fontSize !== fontSize) {
-        chain.setFontSize(fontSize);
-        needsRun = true;
-      }
-      if (needsRun) chain.run();
-    });
+    // Re-apply sticky font family if missing
+    if (fontFamily && attrs.fontFamily !== fontFamily) {
+      chain = chain.setFontFamily(fontFamily);
+      needsRun = true;
+    }
+
+    // Re-apply sticky font size if missing
+    if (fontSize && attrs.fontSize !== fontSize) {
+      chain = chain.setFontSize(fontSize);
+      needsRun = true;
+    }
+
+    if (needsRun) {
+      // Use queueMicrotask to ensure state transaction finishes clean
+      queueMicrotask(() => {
+        chain.run();
+      });
+    }
   },
 
   addCommands() {

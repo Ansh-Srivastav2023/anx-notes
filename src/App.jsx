@@ -16,8 +16,30 @@ import {
   exportDocumentAsJson,
   exportDocumentAsMarkdown,
   importFromFile,
-  stripHtml,
 } from './storage';
+import RecentBar from './RecentBar';
+import CommandPalette from './editor/CommandPalette';
+
+const RECENTS_KEY = 'anx-notes.recents';
+const MAX_RECENTS = 8;
+
+function loadRecents() {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecents(ids) {
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(ids));
+  } catch {
+    /* ignore */
+  }
+}
 
 function AppBrand() {
   return (
@@ -48,7 +70,6 @@ function getInitialTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-/* Undo toast */
 function UndoToast({ payload, onDismiss }) {
   const timerRef = useRef(null);
 
@@ -86,6 +107,8 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
   const [undoPayload, setUndoPayload] = useState(null);
+  const [recentIds, setRecentIds] = useState(loadRecents);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const currentDocIdRef = useRef(currentDocId);
   useEffect(() => {
@@ -93,6 +116,7 @@ export default function App() {
   }, [currentDocId]);
 
   const saveTimerRef = useRef(null);
+  const cursorPositionsRef = useRef({});
   const pendingContentRef = useRef(null);
 
   /* Boot: async load from IndexedDB */
@@ -138,6 +162,36 @@ export default function App() {
     saveCurrentId(currentDocId);
   }, [currentDocId]);
 
+  /* NOTE: the "push current to front" effect has been REMOVED.
+     The recent bar is now static — items keep their position and only
+     change when you open a new document, close a chip, or delete a doc. */
+
+  /* ⌘K / Ctrl+K — command palette */
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  /* Drop any recents that point at docs that no longer exist or are trashed */
+  useEffect(() => {
+    if (!booted) return;
+    const validIds = new Set(
+      documents.filter((d) => !d.deletedAt).map((d) => d.id)
+    );
+    setRecentIds((prev) => {
+      const next = prev.filter((id) => validIds.has(id));
+      if (next.length === prev.length) return prev;
+      saveRecents(next);
+      return next;
+    });
+  }, [documents, booted]);
+
   const currentDoc = documents.find((d) => d.id === currentDocId && !d.deletedAt);
 
   const flushSave = useCallback(() => {
@@ -156,6 +210,43 @@ export default function App() {
       pendingContentRef.current = null;
     }
   }, []);
+
+  const handleRemoveRecent = useCallback((id) => {
+    setRecentIds((prev) => {
+      const next = prev.filter((x) => x !== id);
+      saveRecents(next);
+      return next;
+    });
+
+    if (id !== currentDocIdRef.current) return;
+
+    flushSave();
+
+    const nextRecent = recentIds
+      .filter((x) => x !== id)
+      .find((rid) => {
+        const doc = documents.find((d) => d.id === rid);
+        return doc && !doc.deletedAt;
+      });
+
+    if (nextRecent) {
+      setCurrentDocId(nextRecent);
+      return;
+    }
+
+    const fallback = [...documents]
+      .filter((d) => !d.deletedAt && d.id !== id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+
+    if (fallback) {
+      setCurrentDocId(fallback.id);
+      return;
+    }
+
+    const fresh = createDocument('Untitled note');
+    setDocuments((docs) => [fresh, ...docs]);
+    setCurrentDocId(fresh.id);
+  }, [documents, recentIds, flushSave]);
 
   const handleEditorChange = useCallback(
     (html) => {
@@ -185,15 +276,32 @@ export default function App() {
     const doc = createDocument('Untitled note');
     setDocuments((docs) => [doc, ...docs]);
     setCurrentDocId(doc.id);
+
+    // Add the new document to the recent bar without reordering existing tabs
+    setRecentIds((prev) => {
+      if (prev.includes(doc.id)) return prev;
+      const next = [...prev, doc.id].slice(-MAX_RECENTS);
+      saveRecents(next);
+      return next;
+    });
   }, [flushSave]);
 
   const handleSelectDocument = useCallback(
     (id) => {
       const target = documents.find((d) => d.id === id);
       if (!target || target.deletedAt) return;
-      if (id === currentDocId) return;
-      flushSave();
-      setCurrentDocId(id);
+      if (id !== currentDocId) {
+        flushSave();
+        setCurrentDocId(id);
+      }
+
+      // Ensure the doc appears in the bar without disturbing existing positions
+      setRecentIds((prev) => {
+        if (prev.includes(id)) return prev;
+        const next = [...prev, id].slice(-MAX_RECENTS);
+        saveRecents(next);
+        return next;
+      });
     },
     [currentDocId, documents, flushSave]
   );
@@ -213,7 +321,6 @@ export default function App() {
     );
   }, []);
 
-  /* Soft delete → moves to trash + shows undo */
   const handleDelete = useCallback((id) => {
     if (!id) return;
     const target = documents.find((d) => d.id === id);
@@ -225,7 +332,6 @@ export default function App() {
       )
     );
 
-    // If we just trashed the currently-open doc, switch to another
     if (id === currentDocIdRef.current) {
       const next = documents.find((d) => d.id !== id && !d.deletedAt);
       if (next) setCurrentDocId(next.id);
@@ -285,6 +391,14 @@ export default function App() {
     doc.content = tpl.content || '';
     setDocuments((docs) => [doc, ...docs]);
     setCurrentDocId(doc.id);
+
+    // Template-created doc also lands in the bar
+    setRecentIds((prev) => {
+      if (prev.includes(doc.id)) return prev;
+      const next = [...prev, doc.id].slice(-MAX_RECENTS);
+      saveRecents(next);
+      return next;
+    });
   }, [flushSave]);
 
   const handleDeleteTemplate = useCallback((id) => {
@@ -314,6 +428,14 @@ export default function App() {
       const doc = await importFromFile(file);
       setDocuments((docs) => [doc, ...docs]);
       setCurrentDocId(doc.id);
+
+      // Imported doc also lands in the bar
+      setRecentIds((prev) => {
+        if (prev.includes(doc.id)) return prev;
+        const next = [...prev, doc.id].slice(-MAX_RECENTS);
+        saveRecents(next);
+        return next;
+      });
     },
     [flushSave]
   );
@@ -373,10 +495,26 @@ export default function App() {
       <main className="app-main">
         <SlackEditor
           key={currentDocId}
+          docId={currentDocId}
           initialContent={currentDoc?.content || ''}
+          initialSelection={cursorPositionsRef.current[currentDocId]}
+          onSelectionChange={(sel) => {
+            if (currentDocId) {
+              cursorPositionsRef.current[currentDocId] = sel;
+            }
+          }}
           onChange={handleEditorChange}
           helpOpen={helpOpen}
           setHelpOpen={setHelpOpen}
+          topBar={
+            <RecentBar
+              documents={documents}
+              recentIds={recentIds}
+              currentDocId={currentDocId}
+              onSelect={handleSelectDocument}
+              onRemove={handleRemoveRecent}
+            />
+          }
         />
       </main>
 
@@ -402,6 +540,27 @@ export default function App() {
         onUseTemplate={handleUseTemplate}
         onDeleteTemplate={handleDeleteTemplate}
         onSaveCurrentAsTemplate={handleSaveAsTemplate}
+      />
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        documents={documents}
+        currentDocId={currentDocId}
+        onSelectDocument={handleSelectDocument}
+        actions={[
+          { id: 'new-doc',      title: 'New document',        keywords: ['create', 'add'],                    run: handleNewDocument },
+          { id: 'save',         title: 'Save now',            keywords: ['write', 'persist'],                 run: handleSaveNow },
+          { id: 'open-docs',    title: 'Open document…',      keywords: ['browse', 'list', 'files', 'all'],   run: () => setDocsModalOpen(true) },
+          { id: 'templates',    title: 'New from template…',  keywords: ['template', 'start'],                run: () => setTemplatesModalOpen(true) },
+          { id: 'save-tpl',     title: 'Save as template…',   keywords: ['template', 'reuse'],                run: handleSaveAsTemplate },
+          { id: 'export-html',  title: 'Export as HTML',      keywords: ['download', 'save', 'html'],         run: handleExportHtml },
+          { id: 'export-json',  title: 'Export as JSON',      keywords: ['download', 'backup', 'json'],       run: handleExportJson },
+          { id: 'export-md',    title: 'Export as Markdown',  keywords: ['download', 'md', 'markdown'],       run: handleExportMarkdown },
+          { id: 'theme',        title: 'Toggle theme',        keywords: ['dark', 'light', 'mode'],            run: toggleTheme },
+          { id: 'shortcuts',    title: 'Keyboard shortcuts',  keywords: ['help', 'keys'],                     run: () => setHelpOpen(true) },
+          { id: 'delete',       title: 'Delete this document', keywords: ['remove', 'trash', 'delete'],       run: () => handleDelete(currentDocIdRef.current) },
+        ]}
       />
 
       {saveToast && (
