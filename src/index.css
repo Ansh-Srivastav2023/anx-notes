@@ -36,6 +36,19 @@
   --table-header-bg: #eef2ff;
   --table-header-border: #c7d2fe;
 
+    /* Toolbar (deep indigo brand strip) */
+  --toolbar-bg: #1e1b4b;
+  --toolbar-bg-hover: rgba(255, 255, 255, 0.08);
+  --toolbar-bg-active: rgba(165, 180, 252, 0.25);
+  --toolbar-text: rgba(224, 231, 255, 0.85);
+  --toolbar-text-hover: #ffffff;
+  --toolbar-text-active: #ffffff;
+  --toolbar-border: rgba(255, 255, 255, 0.10);
+  --toolbar-sep: rgba(255, 255, 255, 0.15);
+  --toolbar-surface: rgba(255, 255, 255, 0.06);
+  --toolbar-surface-hover: rgba(255, 255, 255, 0.12);
+  --toolbar-surface-border: rgba(255, 255, 255, 0.15);
+
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -78,6 +91,18 @@
   --danger-bg: rgba(239, 68, 68, 0.12);
   --danger-border: rgba(239, 68, 68, 0.28);
   --danger-text: #fca5a5;
+
+    --toolbar-bg: hsl(240, 25%, 9%);
+  --toolbar-bg-hover: rgba(255, 255, 255, 0.06);
+  --toolbar-bg-active: rgba(165, 180, 252, 0.18);
+  --toolbar-text: hsl(230, 20%, 72%);
+  --toolbar-text-hover: hsl(230, 30%, 95%);
+  --toolbar-text-active: #a5b4fc;
+  --toolbar-border: rgba(255, 255, 255, 0.06);
+  --toolbar-sep: rgba(255, 255, 255, 0.10);
+  --toolbar-surface: rgba(255, 255, 255, 0.05);
+  --toolbar-surface-hover: rgba(255, 255, 255, 0.10);
+  --toolbar-surface-border: rgba(255, 255, 255, 0.10);
 
   --table-border: hsl(28, 6%, 24%);
   --table-border-outer: hsl(28, 6%, 32%);
@@ -130,47 +155,44 @@ body {
    (position: relative + z-index keeps the header above the editor
     and any fixed-position drag grips that render at negative coords)
 ================================================================== */
+/* ==================================================================
+   Header bar & Brand
+   Layout: [Brand 20%] [Recent chips flexible] [⋯ button]
+================================================================== */
 .app-header {
   position: relative;
-  z-index: 60;
+  z-index: 70;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
+  gap: 12px;
+  padding: 10px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.app-header-spacer {
-  flex: 1;
-}
-
-.app-title h1 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-}
-
 .app-brand {
+  flex: 0 0 20%;
+  min-width: 0;
+  max-width: 20%;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   user-select: none;
+  overflow: hidden;
 }
 
 .app-logo {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   flex: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
   color: #ffffff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: -0.02em;
   box-shadow:
@@ -196,19 +218,151 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .app-brand-title {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--text);
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-brand-accent {
   font-weight: 500;
   color: var(--text-muted);
+}
+
+/* ==================================================================
+   Recent bar (in-header variant)
+   The standalone .recent-bar rules still apply; these override the
+   block styling so the bar sits inline between the brand and the
+   document menu with no border, padding, or background of its own.
+================================================================== */
+.app-header .recent-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  gap: 2px;
+  background: transparent;
+  border-bottom: 0;
+}
+
+/* ==================================================================
+   Recent bar (default / standalone — kept for backward compat)
+================================================================== */
+.recent-bar {
+  position: relative;
+  z-index: 60;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.recent-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.recent-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.recent-item:hover,
+.recent-item[data-active='true'] {
+  background: var(--surface-hover);
+}
+
+.recent-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  cursor: pointer;
+  outline: none;
+  transition: color 0.15s ease;
+}
+
+.recent-link:hover {
+  color: var(--text);
+}
+
+.recent-item[data-active='true'] .recent-link {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.recent-link:focus-visible,
+.recent-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.recent-item + .recent-item::before {
+  content: '·';
+  color: var(--text-faint);
+  margin-right: 4px;
+  user-select: none;
+  opacity: 0.5;
+}
+
+.recent-remove {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  padding: 0;
+  margin-right: 4px;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.recent-item:hover .recent-remove,
+.recent-remove:focus-visible {
+  opacity: 0.7;
+}
+
+.recent-remove:hover {
+  opacity: 1;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+
+.recent-item[data-active='true'] .recent-remove {
+  opacity: 0.55;
 }
 
 /* ==================================================================
@@ -472,9 +626,8 @@ body {
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.02);
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--toolbar-border);
   transition: background 0.2s ease, border-color 0.2s ease;
   user-select: none;
 }
@@ -487,7 +640,7 @@ body {
 .tool-sep {
   width: 1px;
   height: 18px;
-  background: var(--border);
+  background: var(--toolbar-sep);
   margin: 0 4px;
   flex: none;
 }
@@ -501,7 +654,7 @@ body {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--toolbar-text);
   font-family: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -510,9 +663,9 @@ body {
 }
 
 .tool-btn:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text);
-  border-color: var(--border);
+  background: var(--toolbar-bg-hover);
+  color: var(--toolbar-text-hover);
+  border-color: var(--toolbar-border);
 }
 
 .tool-btn:active:not(:disabled) {
@@ -520,9 +673,9 @@ body {
 }
 
 .tool-btn[data-active='true'] {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: var(--accent-border);
+  background: var(--toolbar-bg-active);
+  color: var(--toolbar-text-active);
+  border-color: var(--toolbar-surface-border);
   font-weight: 600;
 }
 
@@ -2689,3 +2842,65 @@ body.block-dragging * {
   color: var(--text-faint);
 }
 
+@media (max-width: 640px) {
+  .app-brand {
+    flex: 0 0 auto;
+    max-width: none;
+  }
+  .app-brand-text {
+    display: none;   /* icon only */
+  }
+}
+
+
+/* ==================================================================
+   Toolbar-specific overrides
+   The trigger + split button need to read against the dark toolbar
+   rather than the light surface they were designed for.
+================================================================== */
+.toolbar .tool-dropdown-trigger {
+  background: var(--toolbar-surface);
+  border-color: var(--toolbar-surface-border);
+  color: var(--toolbar-text);
+}
+
+.toolbar .tool-dropdown-trigger:hover {
+  background: var(--toolbar-surface-hover);
+  border-color: var(--toolbar-surface-border);
+  color: var(--toolbar-text-hover);
+}
+
+.toolbar .tool-dropdown-trigger[aria-expanded='true'] {
+  background: var(--toolbar-bg-active);
+  color: var(--toolbar-text-active);
+  border-color: var(--toolbar-surface-border);
+  box-shadow: 0 0 0 3px rgba(165, 180, 252, 0.15);
+}
+
+.toolbar .table-split {
+  border-color: var(--toolbar-surface-border);
+  background: var(--toolbar-surface);
+}
+
+.toolbar .table-split:hover {
+  background: var(--toolbar-surface-hover);
+  border-color: var(--toolbar-surface-border);
+}
+
+.toolbar .table-split-main,
+.toolbar .table-split-caret {
+  color: var(--toolbar-text);
+}
+
+.toolbar .table-split-main:hover {
+  color: var(--toolbar-text-hover);
+}
+
+.toolbar .table-split-caret {
+  border-left-color: var(--toolbar-surface-border);
+}
+
+.toolbar .table-split-caret:hover {
+  color: var(--toolbar-text-hover);
+  background: var(--toolbar-surface-hover);
+}

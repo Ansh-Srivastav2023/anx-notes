@@ -35,19 +35,16 @@ export default function SlackEditor({
   onSelectionChange,
   helpOpen = false,
   setHelpOpen = () => {},
-  topBar = null,
 }) {
   const scrollRef = useRef(null);
   const helpBtnRef = useRef(null);
   const [findOpen, setFindOpen] = useState(false);
 
-  // Keep the callback in a ref so the unmount effect always uses the latest
   const onSelectionChangeRef = useRef(onSelectionChange);
   useEffect(() => {
     onSelectionChangeRef.current = onSelectionChange;
   }, [onSelectionChange]);
 
-  // Once we've restored this editor, enable live saves
   const restoredEditorsRef = useRef(new WeakSet());
 
   const editor = useEditor({
@@ -93,7 +90,6 @@ export default function SlackEditor({
       onChange?.(editor.getHTML());
     },
     onSelectionUpdate: ({ editor }) => {
-      // Live save, but only after the restore has settled
       if (!restoredEditorsRef.current.has(editor)) return;
       try {
         onSelectionChangeRef.current?.({
@@ -104,7 +100,6 @@ export default function SlackEditor({
     },
   });
 
-  // ---- Restore cursor on mount ----
   useLayoutEffect(() => {
     if (!editor) return;
     if (restoredEditorsRef.current.has(editor)) return;
@@ -137,7 +132,6 @@ export default function SlackEditor({
     });
   }, [editor, initialSelection]);
 
-  // ---- Save cursor on unmount (deterministic) ----
   useLayoutEffect(() => {
     if (!editor) return undefined;
     return () => {
@@ -150,7 +144,6 @@ export default function SlackEditor({
     };
   }, [editor]);
 
-  /* Ctrl/Cmd + / opens the shortcuts help */
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
@@ -162,7 +155,6 @@ export default function SlackEditor({
     return () => document.removeEventListener('keydown', onKey);
   }, [setHelpOpen]);
 
-  /* ⌘F / Ctrl+F — open find & replace */
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
@@ -175,7 +167,6 @@ export default function SlackEditor({
     return () => document.removeEventListener('keydown', onKey, true);
   }, []);
 
-  /* Tab / Shift+Tab */
   useEffect(() => {
     if (!editor) return undefined;
 
@@ -214,6 +205,7 @@ export default function SlackEditor({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [editor]);
 
+  console.log('[SlackEditor] rendering, editor =', !!editor);
   return (
     <div className="editor-shell">
       <FindReplaceBar
@@ -227,8 +219,6 @@ export default function SlackEditor({
         setHelpOpen={setHelpOpen}
         onOpenFind={() => setFindOpen(true)}
       />
-
-      {topBar}
 
       <div className="editor-body" ref={scrollRef}>
         <EditorContent editor={editor} />

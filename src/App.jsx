@@ -467,10 +467,15 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <AppBrand />
-        <div className="app-title">
-          <h1>{currentDoc?.title || 'ANX Notes'}</h1>
-        </div>
-        <div className="app-header-spacer" />
+
+        <RecentBar
+          documents={documents}
+          recentIds={recentIds}
+          currentDocId={currentDocId}
+          onSelect={handleSelectDocument}
+          onRemove={handleRemoveRecent}
+        />
+
         <DocumentMenu
           documents={documents.filter((d) => !d.deletedAt)}
           currentDocId={currentDocId}
@@ -506,15 +511,6 @@ export default function App() {
           onChange={handleEditorChange}
           helpOpen={helpOpen}
           setHelpOpen={setHelpOpen}
-          topBar={
-            <RecentBar
-              documents={documents}
-              recentIds={recentIds}
-              currentDocId={currentDocId}
-              onSelect={handleSelectDocument}
-              onRemove={handleRemoveRecent}
-            />
-          }
         />
       </main>
 
