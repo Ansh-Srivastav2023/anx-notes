@@ -24,17 +24,23 @@ import TableDragHandles from './TableDragHandles';
 import BlockDragHandles from './BlockDragHandles';
 import MenuBar from './editor/MenuBar';
 import StatusBar from './editor/StatusBar';
+import Outline from './editor/Outline';
 
 import { FindReplace } from './editor/FindReplaceExtension';
 import FindReplaceBar from './editor/FindReplace';
 
 export default function SlackEditor({
+  docId,
   initialContent = '',
   onChange,
   initialSelection,
   onSelectionChange,
   helpOpen = false,
   setHelpOpen = () => {},
+  readMode = false,
+  onToggleReadMode = () => {},
+  outlineOpen = false,
+  setOutlineOpen = () => {},
 }) {
   const scrollRef = useRef(null);
   const helpBtnRef = useRef(null);
@@ -99,6 +105,12 @@ export default function SlackEditor({
       } catch { /* ignore */ }
     },
   });
+
+  /* Toggle editability when read mode changes */
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!readMode);
+  }, [editor, readMode]);
 
   useLayoutEffect(() => {
     if (!editor) return;
@@ -205,28 +217,54 @@ export default function SlackEditor({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [editor]);
 
-  console.log('[SlackEditor] rendering, editor =', !!editor);
+  useEffect(() => {
+    if (!outlineOpen) return;
+    // Close if the viewport is phone-sized
+    if (typeof window !== 'undefined' && window.innerWidth <= 640) {
+      setOutlineOpen(false);
+    }
+  }, [docId, outlineOpen, setOutlineOpen]);
+
   return (
-    <div className="editor-shell">
+    <div className="editor-shell" data-read-mode={readMode ? 'true' : 'false'}>
       <FindReplaceBar
         editor={editor}
         open={findOpen}
         onClose={() => setFindOpen(false)}
       />
-      <MenuBar
-        editor={editor}
-        helpBtnRef={helpBtnRef}
-        setHelpOpen={setHelpOpen}
-        onOpenFind={() => setFindOpen(true)}
-      />
 
-      <div className="editor-body" ref={scrollRef}>
-        <EditorContent editor={editor} />
+        <MenuBar
+          editor={editor}
+          helpBtnRef={helpBtnRef}
+          setHelpOpen={setHelpOpen}
+          onOpenFind={() => setFindOpen(true)}
+          outlineOpen={outlineOpen}
+          onToggleOutline={() => setOutlineOpen((o) => !o)}
+          readMode={readMode}
+          onToggleReadMode={onToggleReadMode}
+        />
+
+      <div className="editor-main">
+        <div className="editor-body" ref={scrollRef}>
+          <EditorContent editor={editor} />
+        </div>
+
+        {outlineOpen && !readMode && (
+          <Outline
+            editor={editor}
+            open={outlineOpen}
+            onClose={() => setOutlineOpen(false)}
+          />
+        )}
       </div>
 
-      <TableDragHandles editor={editor} />
-      <BlockDragHandles editor={editor} />
-      <StatusBar editor={editor} />
+      {!readMode && (
+        <>
+          <TableDragHandles editor={editor} />
+          <BlockDragHandles editor={editor} />
+          <StatusBar editor={editor} />
+        </>
+      )}
 
       <ShortcutsHelp
         open={helpOpen}

@@ -2,16 +2,23 @@ import React, { useEffect, useRef, useState } from 'react';
 import { icons } from './icons';
 import { FONT_FAMILIES, FONT_SIZES } from './fontOptions';
 import { toggleTaskListSmart } from './taskList';
-import TablePicker from './TablePicker';
 
 /* ---------------------------------------------------------------- */
 /*  Toolbar primitives                                               */
 /* ---------------------------------------------------------------- */
-function ToolButton({ onClick, active, disabled, label, wide, children }) {
+function ToolButton({ onClick, active, disabled, label, wide, mod, children }) {
+  const className = [
+    'tool-btn',
+    wide ? 'tool-btn--wide' : '',
+    mod ? `tool-btn--${mod}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <button
       type="button"
-      className={wide ? 'tool-btn tool-btn--wide' : 'tool-btn'}
+      className={className}
       data-active={active ? 'true' : 'false'}
       disabled={disabled}
       onClick={onClick}
@@ -92,61 +99,19 @@ function ToolbarDropdown({
   );
 }
 
-
-function TableSplitButton({ editor }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  const insertTable = (rows, cols) => {
-    editor
-      .chain()
-      .focus()
-      .insertTable({ rows, cols, withHeaderRow: true })
-      .run();
-  };
-
-    return (
-        <div className="table-split" ref={ref}>
-        <button
-            type="button"
-            className="tool-btn table-split-main"
-            onClick={() => insertTable(3, 3)}
-            title="Insert table (3 × 3)"
-            aria-label="Insert table (3 × 3)"
-        >
-            {icons.table}
-        </button>
-        <button
-            type="button"
-            className="table-split-caret"
-            aria-label="Choose table size"
-            aria-expanded={open}
-            title="Choose table size"
-            onClick={() => setOpen((o) => !o)}
-        >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"
-            strokeLinejoin="round" aria-hidden="true">
-            <path d="m6 9 6 6 6-6" />
-            </svg>
-        </button>
-        {open && (
-            <TablePicker
-            onSelect={(rows, cols) => {
-                insertTable(rows, cols);
-                setOpen(false);
-            }}
-            onClose={() => setOpen(false)}
-            />
-        )}
-        </div>
-    );
-}
-
 /* ---------------------------------------------------------------- */
 /*  Toolbar                                                          */
 /* ---------------------------------------------------------------- */
-export default function MenuBar({ editor, helpBtnRef, setHelpOpen, onOpenFind }) {
+export default function MenuBar({
+  editor,
+  helpBtnRef,
+  setHelpOpen,
+  onOpenFind,
+  outlineOpen = false,
+  onToggleOutline = () => {},
+  readMode = false,
+  onToggleReadMode = () => {},
+}) {
   const [, forceRender] = useState(0);
 
   useEffect(() => {
@@ -237,27 +202,52 @@ export default function MenuBar({ editor, helpBtnRef, setHelpOpen, onOpenFind })
       <span className="tool-sep" />
 
       <ToolButton label="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}>{icons.divider}</ToolButton>
-    <TableSplitButton editor={editor} />
+      <ToolButton
+        label="Insert table"
+        onClick={() =>
+          editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        }
+      >
+        {icons.table}
+      </ToolButton>
 
-        <span className="toolbar-spacer" />
+      <span className="toolbar-spacer" />
 
-              <span className="toolbar-spacer" />
+      <ToolButton
+        label="Find and replace (Ctrl+F)"
+        onClick={onOpenFind}
+        mod="find"
+      >
+        {icons.search}
+      </ToolButton>
 
+      <ToolButton
+        label={readMode ? 'Exit read mode (Ctrl+Shift+R)' : 'Read mode (Ctrl+Shift+R)'}
+        active={readMode}
+        onClick={onToggleReadMode}
+        mod="readmode"
+      >
+        {icons.bookOpen}
+      </ToolButton>
+
+      <ToolButton
+        label={outlineOpen ? 'Hide outline' : 'Show outline'}
+        active={outlineOpen}
+        onClick={onToggleOutline}
+        mod="outline"
+      >
+        {icons.outline}
+      </ToolButton>
+
+      <span ref={helpBtnRef} style={{ display: 'inline-flex' }}>
         <ToolButton
-            label="Find and replace (Ctrl+F)"
-            onClick={onOpenFind}
+          label="Keyboard shortcuts (Ctrl+/)"
+          onClick={() => setHelpOpen((o) => !o)}
+          mod="help"
         >
-            {icons.search}
+          {icons.help}
         </ToolButton>
-
-        <span ref={helpBtnRef} style={{ display: 'inline-flex' }}>
-            <ToolButton
-            label="Keyboard shortcuts (Ctrl+/)"
-            onClick={() => setHelpOpen((o) => !o)}
-            >
-            {icons.help}
-            </ToolButton>
-        </span>
+      </span>
     </div>
   );
 }

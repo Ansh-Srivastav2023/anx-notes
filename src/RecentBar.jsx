@@ -6,8 +6,8 @@ export default function RecentBar({
   currentDocId,
   onSelect,
   onRemove,
+  onNewDocument,
 }) {
-  // Memoize document lookup to prevent recalculating on every render
   const recents = useMemo(() => {
     const docsById = new Map(documents.map((d) => [d.id, d]));
     return recentIds
@@ -15,10 +15,8 @@ export default function RecentBar({
       .filter((d) => Boolean(d && !d.deletedAt));
   }, [documents, recentIds]);
 
-  if (recents.length === 0) return null;
-
   return (
-    <nav className="recent-bar" aria-label="Recently opened documents">
+    <nav className="recent-bar" aria-label="Open documents">
       {recents.map((doc) => {
         const isActive = doc.id === currentDocId;
         const displayTitle = doc.title?.trim() || 'Untitled note';
@@ -39,36 +37,57 @@ export default function RecentBar({
               <span className="recent-title">{displayTitle}</span>
             </button>
 
-            {recents.length > 1 && (
-              <button
-                type="button"
-                className="recent-remove"
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevents triggering onSelect if item wrapper has click handlers
-                  onRemove(doc.id);
-                }}
-                aria-label={`Remove ${displayTitle} from recent notes`}
-                title="close"
+            <button
+              type="button"
+              className="recent-remove"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(doc.id);
+              }}
+              aria-label={`Close ${displayTitle}`}
+              title="Close"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M18 6 6 18" />
-                  <path d="m6 6 12 12" />
-                </svg>
-              </button>
-            )}
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
           </div>
         );
       })}
+
+      <button
+        type="button"
+        className="recent-add"
+        onClick={onNewDocument}
+        title="New document"
+        aria-label="New document"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+      </button>
     </nav>
   );
 }

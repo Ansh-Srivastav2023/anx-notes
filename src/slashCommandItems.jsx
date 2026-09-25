@@ -174,6 +174,16 @@ export const slashCommandItems = [
     },
   },
   {
+    title: 'Font: Unicorn',
+    subtitle: 'Pacifico — playful brush script',
+    keywords: ['font', 'unicorn', 'pacifico', 'script', 'brush'],
+    icon: <FontIcon family="Pacifico, cursive" />,
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      editor.chain().focus().setStickyFontFamily('Pacifico').run();
+    },
+  },
+  {
     title: 'Font: Comic',
     subtitle: 'Comic Sans — playful',
     keywords: ['font', 'comic', 'playful'],

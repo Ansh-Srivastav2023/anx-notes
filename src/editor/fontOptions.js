@@ -3,6 +3,7 @@ export const FONT_FAMILIES = [
   { value: 'Inter', label: 'Sans', style: { fontFamily: 'Inter, sans-serif' } },
   { value: 'Georgia', label: 'Serif', style: { fontFamily: 'Georgia, serif' } },
   { value: '"JetBrains Mono"', label: 'Mono', style: { fontFamily: '"JetBrains Mono", monospace' } },
+  { value: 'Pacifico', label: 'Unicorn', style: { fontFamily: 'Pacifico, cursive' } },
   { value: 'Caveat', label: 'Hand', style: { fontFamily: 'Caveat, cursive' } },
   { value: 'Kalam', label: 'Kalam', style: { fontFamily: 'Kalam, serif' } },
   { value: '"Comic Sans MS"', label: 'Comic', style: { fontFamily: '"Comic Sans MS", cursive' } },

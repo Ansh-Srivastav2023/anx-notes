@@ -3,6 +3,7 @@ import SlackEditor from './SlackEditor';
 import DocumentMenu from './DocumentMenu';
 import DocumentsModal from './DocumentsModal';
 import TemplatesModal from './TemplatesModal';
+import { ACCENT_COLORS, DEFAULT_ACCENT_ID, getAccent } from './editor/accentColors';
 import {
   loadDocuments,
   saveDocuments,
@@ -19,9 +20,38 @@ import {
 } from './storage';
 import RecentBar from './RecentBar';
 import CommandPalette from './editor/CommandPalette';
+import WelcomePage from './WelcomePage';
 
 const RECENTS_KEY = 'anx-notes.recents';
 const MAX_RECENTS = 8;
+const READMODE_KEY = 'anx-notes.readMode';
+const ACCENT_KEY = 'anx-notes.accent';
+
+/* A doc counts as "blank" if it has no text content, no structural
+   elements (table/image), and still carries the default title.
+   Blank docs are never persisted and are pruned when you leave them. */
+function isBlankDoc(doc) {
+  if (!doc || doc.deletedAt) return false;
+
+  const html = (doc.content || '').trim();
+  if (!html) return true;
+
+  // If the user inserted a table or image, that's intentional — keep it
+  if (/<(table|img)\b/i.test(html)) return false;
+
+  // Strip tags and non-breaking spaces, then look for any remaining text
+  const text = html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+  if (text) return false;
+
+  // No text at all — if the user has not renamed it, it's blank
+  const title = (doc.title || '').trim();
+  if (title && title !== 'Untitled note') return false;
+
+  return true;
+}
 
 function loadRecents() {
   try {
@@ -44,19 +74,174 @@ function saveRecents(ids) {
 function AppBrand() {
   return (
     <div className="app-brand">
-      <div className="app-logo" aria-label="ANX Notes Logo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
-          strokeLinejoin="round" aria-hidden="true">
-          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="9" y1="13" x2="15" y2="13" />
-          <line x1="9" y1="17" x2="13" y2="17" />
+      <div
+        className="app-logo"
+        aria-label="ANX Notes Logo"
+      >
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 320 320"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient
+              id="brandMain"
+              x1="45"
+              y1="35"
+              x2="275"
+              y2="285"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0" stopColor="#38BDF8" />
+              <stop offset="0.38" stopColor="#3B82F6" />
+              <stop offset="0.72" stopColor="#6366F1" />
+              <stop offset="1" stopColor="#A855F7" />
+            </linearGradient>
+
+            <linearGradient
+              id="brandWriting"
+              x1="80"
+              y1="210"
+              x2="235"
+              y2="230"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0" stopColor="#38BDF8" />
+              <stop offset="0.5" stopColor="#818CF8" />
+              <stop offset="1" stopColor="#C084FC" />
+            </linearGradient>
+
+            <filter
+              id="brandShadow"
+              x="-40%"
+              y="-40%"
+              width="180%"
+              height="190%"
+            >
+              <feDropShadow
+                dx="0"
+                dy="8"
+                stdDeviation="8"
+                floodColor="#6366F1"
+                floodOpacity="0.20"
+              />
+            </filter>
+          </defs>
+
+          {/* Main note */}
+          <path
+            d="
+              M82 34
+              H194
+              L270 110
+              V260
+              C270 278 256 292 238 292
+              H82
+              C58 292 42 276 42 252
+              V74
+              C42 50 58 34 82 34
+              Z
+            "
+            fill="url(#brandMain)"
+            filter="url(#brandShadow)"
+          />
+
+          {/* Fold */}
+          <path
+            d="
+              M194 35
+              V94
+              C194 104 202 112 212 112
+              H269
+            "
+            fill="none"
+            stroke="white"
+            strokeOpacity="0.42"
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="
+              M194 35
+              L269 110
+              H212
+              C202 110 194 102 194 92
+              Z
+            "
+            fill="#A855F7"
+            fillOpacity="0.32"
+          />
+
+          {/* Note lines */}
+          <path
+            d="M82 145 H177"
+            stroke="white"
+            strokeOpacity="0.72"
+            strokeWidth="9"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M82 169 H216"
+            stroke="white"
+            strokeOpacity="0.32"
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
+
+          {/* Handwriting */}
+          <path
+            d="
+              M82 225
+              C97 210 109 244 124 227
+              C139 211 151 242 166 227
+              C181 212 194 235 207 220
+              C215 212 222 210 230 210
+            "
+            stroke="url(#brandWriting)"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Pen tip */}
+          <path
+            d="
+              M222 210
+              L239 193
+              C242 190 247 190 250 193
+              L253 196
+              C256 199 256 203 253 206
+              L235 224
+              Z
+            "
+            fill="white"
+            fillOpacity="0.92"
+          />
+
+          <path
+            d="M222 210 L235 224"
+            stroke="#6366F1"
+            strokeWidth="5"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M222 210 L219 228 L235 224 Z"
+            fill="white"
+          />
         </svg>
       </div>
+
       <div className="app-brand-text">
         <span className="app-brand-title">
-          ANX <span className="app-brand-accent">Notes</span>
+          ANX
+          <span className="app-brand-accent"> Notes</span>
         </span>
       </div>
     </div>
@@ -110,6 +295,14 @@ export default function App() {
   const [recentIds, setRecentIds] = useState(loadRecents);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  const [readMode, setReadMode] = useState(() => {
+    try { return localStorage.getItem(READMODE_KEY) === 'true'; } catch { return false; }
+  });
+  const [accentId, setAccentId] = useState(() => {
+    try { return localStorage.getItem(ACCENT_KEY) || DEFAULT_ACCENT_ID; } catch { return DEFAULT_ACCENT_ID; }
+  });
+  const [outlineOpen, setOutlineOpen] = useState(false);
+
   const currentDocIdRef = useRef(currentDocId);
   useEffect(() => {
     currentDocIdRef.current = currentDocId;
@@ -129,9 +322,11 @@ export default function App() {
         docs.length > 0 ? docs : [createDocument('My first note')];
       setDocuments(initial);
       setTemplates(tpls);
-      if (!initial.some((d) => d.id === currentDocId)) {
-        const firstActive = initial.find((d) => !d.deletedAt);
-        setCurrentDocId(firstActive?.id ?? initial[0].id);
+      if (currentDocId) {
+        const target = initial.find(
+          (d) => d.id === currentDocId && !d.deletedAt
+        );
+        if (!target) setCurrentDocId(null);
       }
       setBooted(true);
     })();
@@ -148,10 +343,39 @@ export default function App() {
   useEffect(() => {
     if (!booted) return;
     const t = setTimeout(() => {
-      saveDocuments(documents);
+      // Never persist blank untitled docs — they'll never come back
+      // from IndexedDB, so nothing shows up on reload.
+      const toSave = documents.filter((d) => !isBlankDoc(d));
+      saveDocuments(toSave);
     }, 200);
     return () => clearTimeout(t);
   }, [documents, booted]);
+
+    /* Apply accent color to :root whenever theme or accentId changes */
+  useEffect(() => {
+    const el = document.documentElement;
+    const accent = getAccent(accentId);
+    const palette = theme === 'dark' ? accent.dark : accent.light;
+    const keys = ['--accent', '--accent-soft', '--accent-border', '--accent-ring'];
+    keys.forEach((k) => el.style.setProperty(k, palette[k]));
+    try { localStorage.setItem(ACCENT_KEY, accentId); } catch { /* ignore */ }
+  }, [accentId, theme]);
+
+  /* Persist read mode */
+  useEffect(() => {
+    try { localStorage.setItem(READMODE_KEY, readMode ? 'true' : 'false'); } catch { /* ignore */ }
+  }, [readMode]);
+
+  useEffect(() => {
+    if (!booted) return;
+    setDocuments((docs) => {
+      const pruned = docs.filter(
+        (d) => d.id === currentDocId || !isBlankDoc(d)
+      );
+      return pruned.length === docs.length ? docs : pruned;
+    });
+  }, [currentDocId, booted]);
+
 
   useEffect(() => {
     if (!booted) return;
@@ -218,10 +442,13 @@ export default function App() {
       return next;
     });
 
+    // Only pivot the current doc if we just closed the active tab.
+    // Closing a background tab shouldn't disturb what you're editing.
     if (id !== currentDocIdRef.current) return;
 
     flushSave();
 
+    // Prefer the next still-valid recent tab (keeps the strip order intuitive)
     const nextRecent = recentIds
       .filter((x) => x !== id)
       .find((rid) => {
@@ -234,18 +461,10 @@ export default function App() {
       return;
     }
 
-    const fallback = [...documents]
-      .filter((d) => !d.deletedAt && d.id !== id)
-      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-
-    if (fallback) {
-      setCurrentDocId(fallback.id);
-      return;
-    }
-
-    const fresh = createDocument('Untitled note');
-    setDocuments((docs) => [fresh, ...docs]);
-    setCurrentDocId(fresh.id);
+    // Nothing else open → clear the current doc so the welcome page shows.
+    // The doc itself stays in `documents` and remains accessible from
+    // the ⋯ menu, the command palette, and the welcome page's Recent list.
+    setCurrentDocId(null);
   }, [documents, recentIds, flushSave]);
 
   const handleEditorChange = useCallback(
@@ -445,6 +664,19 @@ export default function App() {
   }, []);
 
   /* Global shortcuts */
+
+    /* ⌘⇧R / Ctrl+Shift+R — toggle read mode */
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        setReadMode((v) => !v);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -474,6 +706,7 @@ export default function App() {
           currentDocId={currentDocId}
           onSelect={handleSelectDocument}
           onRemove={handleRemoveRecent}
+          onNewDocument={handleNewDocument}
         />
 
         <DocumentMenu
@@ -494,24 +727,45 @@ export default function App() {
           onSeeAll={() => setDocsModalOpen(true)}
           onSaveAsTemplate={handleSaveAsTemplate}
           onOpenTemplates={() => setTemplatesModalOpen(true)}
+          readMode={readMode}
+          onToggleReadMode={() => setReadMode((v) => !v)}
+          accentId={accentId}
+          onSelectAccent={setAccentId}
         />
       </header>
 
-      <main className="app-main">
-        <SlackEditor
-          key={currentDocId}
-          docId={currentDocId}
-          initialContent={currentDoc?.content || ''}
-          initialSelection={cursorPositionsRef.current[currentDocId]}
-          onSelectionChange={(sel) => {
-            if (currentDocId) {
-              cursorPositionsRef.current[currentDocId] = sel;
-            }
-          }}
-          onChange={handleEditorChange}
-          helpOpen={helpOpen}
-          setHelpOpen={setHelpOpen}
-        />
+        <main className="app-main">
+        {currentDocId ? (
+          <SlackEditor
+            key={currentDocId}
+            docId={currentDocId}
+            initialContent={currentDoc?.content || ''}
+            initialSelection={cursorPositionsRef.current[currentDocId]}
+            onSelectionChange={(sel) => {
+              if (currentDocId) {
+                cursorPositionsRef.current[currentDocId] = sel;
+              }
+            }}
+            onChange={handleEditorChange}
+            helpOpen={helpOpen}
+            setHelpOpen={setHelpOpen}
+            readMode={readMode}
+            onToggleReadMode={() => setReadMode((v) => !v)}
+            outlineOpen={outlineOpen}
+            setOutlineOpen={setOutlineOpen}
+          />
+        ) : (
+          <WelcomePage
+            documents={documents}
+            onOpenDocument={handleSelectDocument}
+            onNewDocument={handleNewDocument}
+            onOpenBrowser={() => setDocsModalOpen(true)}
+            onOpenTemplates={() => setTemplatesModalOpen(true)}
+            onOpenShortcuts={() => setHelpOpen(true)}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        )}
       </main>
 
       <DocumentsModal

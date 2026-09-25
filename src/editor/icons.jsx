@@ -48,4 +48,20 @@ export const icons = {
     alignCenter: (<Icon><line x1="4" y1="6" x2="20" y2="6" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></Icon>),
     alignRight: (<Icon><line x1="4" y1="6" x2="20" y2="6" /><line x1="10" y1="12" x2="20" y2="12" /><line x1="6" y1="18" x2="20" y2="18" /></Icon>),
     alignJustify: (<Icon><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></Icon>),
+      outline: (
+    <Icon>
+      <path d="M4 6h4" />
+      <path d="M4 12h4" />
+      <path d="M4 18h4" />
+      <path d="M12 6h8" />
+      <path d="M12 12h8" />
+      <path d="M12 18h8" />
+    </Icon>
+  ),
+  bookOpen: (
+    <Icon>
+      <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z" />
+      <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />
+    </Icon>
+  ),
 };

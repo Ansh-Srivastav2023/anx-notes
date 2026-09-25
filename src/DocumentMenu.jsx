@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ACCENT_COLORS } from './editor/accentColors';
 
 // --- Icons ---
 function DotsIcon() {
@@ -88,6 +89,10 @@ export default function DocumentMenu({
   onSaveAsTemplate,
   onOpenTemplates, 
   onSeeAll,
+  readMode,
+  onToggleReadMode,
+  accentId,
+  onSelectAccent,
 }) {
   const { isOpen, setIsOpen, wrapRef } = useDropdown();
   const [renaming, setRenaming] = useState(false);
@@ -329,6 +334,47 @@ export default function DocumentMenu({
           )}
 
           <div className="doc-menu-sep" />
+
+                    {onOpenShortcuts && (
+            <button
+              type="button"
+              role="menuitem"
+              className="doc-menu-item"
+              onClick={() => executeAction(onOpenShortcuts)}
+            >
+              <span>Keyboard shortcuts</span>
+              <kbd className="doc-menu-kbd">ctrl+/</kbd>
+            </button>
+          )}
+
+          <button
+            type="button"
+            role="menuitem"
+            className="doc-menu-item"
+            onClick={() => executeAction(onToggleReadMode)}
+          >
+            <span>{readMode ? 'Exit read mode' : 'Read mode'}</span>
+            <kbd className="doc-menu-kbd">ctrl+shift+R</kbd>
+          </button>
+
+          <div className="doc-menu-sep" />
+          <div className="doc-menu-section-label doc-menu-section-label--tight">
+            Accent color
+          </div>
+          <div className="doc-menu-swatches">
+            {ACCENT_COLORS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="doc-menu-swatch"
+                data-selected={c.id === accentId ? 'true' : 'false'}
+                onClick={() => onSelectAccent(c.id)}
+                title={c.label}
+                aria-label={c.label}
+                style={{ '--swatch': c.swatch }}
+              />
+            ))}
+          </div>
 
           {/* Section: Danger Zone */}
           <button

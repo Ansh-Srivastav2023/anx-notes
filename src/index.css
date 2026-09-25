@@ -184,34 +184,32 @@ body {
 }
 
 .app-logo {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   flex: none;
-  border-radius: var(--radius-md);
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  box-shadow:
-    0 4px 14px -3px rgba(79, 70, 229, 0.45),
-    inset 0 1px 1px rgba(255, 255, 255, 0.35);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: transparent;       /* SVG has its own gradient */
+  border-radius: 0;              /* no square wrapper */
+  box-shadow: none;              /* drop shadow lives in the SVG filter */
   cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;             /* let the drop shadow bleed out */
 }
 
 .app-logo:hover {
-  transform: translateY(-1px) scale(1.02);
-  box-shadow:
-    0 6px 18px -3px rgba(79, 70, 229, 0.55),
-    inset 0 1px 1.5px rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px) scale(1.04);
 }
 
+
 .app-logo:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.97);
 }
 
 .app-brand-text {
@@ -223,18 +221,19 @@ body {
 }
 
 .app-brand-title {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-family: 'Pacifico', cursive;
+  font-size: 20px;             /* Pacifico renders small — bump from 15 to 20 */
+  font-weight: 400;            /* Pacifico only ships one weight */
+  letter-spacing: 0;           /* script fonts shouldn't be tracked out */
   color: var(--text);
-  line-height: 1.2;
+  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .app-brand-accent {
-  font-weight: 500;
+  font-weight: 400;
   color: var(--text-muted);
 }
 
@@ -431,6 +430,7 @@ body {
 .doc-menu-wrap {
   position: relative;
   flex: none;
+  margin-left: auto;
 }
 
 .doc-menu {
@@ -1934,6 +1934,39 @@ body.block-dragging * {
   opacity: 0.55;
 }
 
+/* Add-tab button (browser-style +) */
+.recent-add {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.recent-add:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.recent-add:active {
+  transform: scale(0.94);
+}
+
+.recent-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ==================================================================
    Task list / checklist
 ================================================================== */
@@ -2513,34 +2546,277 @@ body.block-dragging * {
 /* ==================================================================
    Responsive & accessibility
 ================================================================== */
+/* ==================================================================
+   Mobile (≤ 640px)
+================================================================== */
 @media (max-width: 640px) {
-  .app-main { padding: 10px; }
-  .app-header { padding: 12px 16px; }
-  .app-title p { display: none; }
-  .editor-body .ProseMirror { padding: 20px 20px 32px; }
-  .status-hint { display: none; }
-}
 
-@media (max-width: 420px) {
+  /* ---- Header ---- */
+  .app-header {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .app-brand {
+    flex: 0 0 auto;
+    max-width: none;
+  }
+
+  .app-brand-text {
+    display: none;             /* icon-only brand */
+  }
+
+  .app-logo {
+    width: 32px;
+    height: 32px;
+  }
+
+  .recent-bar {
+    /* Leave some room for the ⋯ button */
+    min-width: 0;
+  }
+
+  .recent-link {
+    max-width: 100px;
+    font-size: 11.5px;
+    padding: 4px 6px 4px 8px;
+  }
+
+  .recent-title {
+    max-width: 80px;
+  }
+
+  .recent-add {
+    width: 22px;
+    height: 22px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* ---- Toolbar: single scrollable row ---- */
+  .toolbar {
+    flex-wrap: nowrap;         /* don't wrap, let it scroll */
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 8px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toolbar-spacer {
+    /* Keep the utility buttons reachable by keeping the spacer
+       as a real gap, not an auto-filler */
+    flex: 0 0 12px;
+    min-width: 12px;
+  }
+
+  .tool-sep {
+    margin: 0 2px;
+  }
+
+  .tool-btn {
+    width: 36px;               /* comfortable touch targets */
+    height: 36px;
+    flex: none;
+  }
+
+  .tool-btn--wide {
+    padding: 0 10px;
+    height: 36px;
+  }
+
+  .tool-dropdown-trigger {
+    height: 36px;
+    flex: none;
+  }
+
+  .table-split {
+    flex: none;
+  }
+
+  .table-split-main,
+  .table-split-caret {
+    height: 34px;
+  }
+
+  /* ---- Editor body ---- */
+  .editor-body .ProseMirror {
+    padding: 16px 16px 28px;
+    font-size: 15px;
+  }
+
+  /* ---- Status bar: hide on mobile (screen real estate is precious) ---- */
+  .status-bar {
+    display: none;
+  }
+
+  /* ---- Drag handles: hide entirely on touch ---- */
+  .block-drag-grip,
+  .table-drag-grip {
+    display: none;
+  }
+
+  /* ---- Outline sidebar: overlay from the right ---- */
+  .outline {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(280px, 82vw);
+    z-index: 250;
+    border-left: 1px solid var(--border);
+    box-shadow: -12px 0 32px -12px rgba(0, 0, 0, 0.4);
+    animation: outline-slide-in 0.18s cubic-bezier(0.2, 0.9, 0.35, 1);
+  }
+
+  @keyframes outline-slide-in {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+  }
+
+  .outline-header {
+    padding: 14px 12px 10px 16px;
+  }
+
+  .outline-item {
+    padding: 10px 10px;
+    font-size: 14px;
+  }
+
+  .outline-item[data-level='2'] { padding-left: 22px; font-size: 13.5px; }
+  .outline-item[data-level='3'] { padding-left: 34px; font-size: 13px; }
+
+  /* ---- Find & replace: full-width bottom sheet ---- */
+  .find-replace {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    padding: 12px 12px 16px;
+    box-shadow: 0 -16px 40px -16px rgba(0, 0, 0, 0.35);
+    animation: sheet-up 0.2s cubic-bezier(0.2, 0.9, 0.35, 1);
+  }
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .find-input {
+    min-width: 0;
+    font-size: 16px;           /* prevents iOS zoom-on-focus */
+  }
+
+  .find-btn,
+  .find-toggle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .find-action {
+    height: 36px;
+    padding: 0 14px;
+  }
+
+  /* ---- Slash command menu: full-width ---- */
+  .slash-menu {
+    width: calc(100vw - 24px);
+    max-height: 50vh;
+  }
+
+  .slash-menu-item {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  /* ---- Shortcuts popover: full-width bottom sheet ---- */
   .shortcuts-popover {
-    width: calc(100vw - 32px);
-    left: 16px !important;
-    right: 16px;
+    position: fixed;
+    top: auto !important;
+    bottom: 0;
+    left: 0 !important;
+    right: 0;
+    width: 100%;
+    max-height: 70vh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    animation: sheet-up 0.2s cubic-bezier(0.2, 0.9, 0.35, 1);
+  }
+
+  /* ---- Command palette: full-width ---- */
+  .palette-backdrop {
+    padding: 8px 12px 12px;
+    align-items: flex-start;
+  }
+
+  .palette {
+    max-height: 80vh;
+  }
+
+  .palette-search input {
+    font-size: 16px;           /* prevents iOS zoom-on-focus */
+  }
+
+  /* ---- Documents / Templates modal ---- */
+  .docs-modal {
+    max-height: 90vh;
+  }
+
+  .docs-modal-search input {
+    font-size: 16px;
+  }
+
+  /* ---- Accent swatches: bigger tap targets ---- */
+  .doc-menu-swatches {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  /* ---- Read mode padding is smaller on mobile ---- */
+  .editor-shell[data-read-mode='true'] .ProseMirror {
+    padding-top: 32px;
+    padding-bottom: 48px;
+  }
+
+  /* ---- Table picker: center it ---- */
+  .table-picker {
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+/* ==================================================================
+   Very small screens (≤ 400px)
+================================================================== */
+@media (max-width: 400px) {
+  .app-header {
+    padding: 6px 10px;
   }
-  .toast-notification { animation: none; }
-}
 
+  .recent-link {
+    max-width: 80px;
+    font-size: 11px;
+  }
+
+  .recent-title {
+    max-width: 60px;
+  }
+
+  .editor-body .ProseMirror {
+    padding: 12px 12px 24px;
+  }
+}
 /* ==================================================================
    Find & Replace
 ================================================================== */
@@ -2869,7 +3145,7 @@ body.block-dragging * {
 
 @media (max-width: 640px) {
   .app-brand {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     max-width: none;
   }
   .app-brand-text {
@@ -2928,4 +3204,465 @@ body.block-dragging * {
 .toolbar .table-split-caret:hover {
   color: var(--toolbar-text-hover);
   background: var(--toolbar-surface-hover);
+}
+
+
+/* ==================================================================
+   Welcome page (shown when no tabs are open)
+================================================================== */
+.welcome {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.welcome-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 32px 80px;
+}
+
+.welcome-hero {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.welcome-logo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.welcome-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.welcome-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.welcome-title-accent {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.welcome-title--brand {
+  font-family: 'Pacifico', cursive;
+  font-size: 42px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.welcome-tagline {
+  margin: 12px auto 0;
+  max-width: 48ch;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.welcome-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+
+.welcome-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-alt);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.welcome-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.welcome-btn:active {
+  transform: translateY(1px);
+}
+
+.welcome-btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 6px 20px -8px rgba(79, 70, 229, 0.6);
+}
+
+.welcome-btn--primary:hover {
+  background: var(--accent);
+  filter: brightness(1.06);
+  border-color: var(--accent);
+}
+
+.welcome-section {
+  margin-top: 40px;
+}
+
+.welcome-section-title {
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.welcome-docs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.welcome-doc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.welcome-doc:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent-border);
+}
+
+.welcome-doc-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-doc-date {
+  font-size: 11px;
+  color: var(--text-faint);
+  flex: none;
+}
+
+.welcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.welcome-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.welcome-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent-border);
+}
+
+.welcome-card-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.welcome-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.welcome-card-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.welcome-tips {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.welcome-tips li {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.welcome-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  margin: 0 2px;
+  white-space: nowrap;
+}
+
+
+/* ==================================================================
+   Editor main row (body + optional outline sidebar)
+================================================================== */
+.editor-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ==================================================================
+   Outline sidebar
+================================================================== */
+.outline {
+  flex: none;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.outline-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.outline-title {
+  line-height: 1;
+}
+
+.outline-close {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.outline-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.outline-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.outline-body::-webkit-scrollbar { width: 6px; }
+.outline-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+}
+
+.outline-item {
+  text-align: left;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.outline-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.outline-item[data-level='1'] {
+  font-weight: 600;
+  color: var(--text);
+  padding-left: 8px;
+}
+
+.outline-item[data-level='2'] {
+  padding-left: 22px;
+  font-size: 12px;
+}
+
+.outline-item[data-level='3'] {
+  padding-left: 36px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.outline-empty {
+  padding: 20px 12px;
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
+  font-style: italic;
+}
+
+/* ==================================================================
+   Read mode
+================================================================== */
+.editor-shell[data-read-mode='true'] .ProseMirror {
+  padding-top: 56px;
+  padding-bottom: 72px;
+}
+
+.editor-shell[data-read-mode='true'] .ProseMirror p.is-editor-empty:first-child::before {
+  content: none;
+}
+
+/* Subtle read-mode hint that fades away */
+.read-mode-hint {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.read-mode-hint:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ==================================================================
+   Accent swatch row (in the ⋯ menu)
+================================================================== */
+.doc-menu-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  padding: 6px 10px 10px;
+}
+
+.doc-menu-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.doc-menu-swatch:hover {
+  transform: scale(1.12);
+}
+
+.doc-menu-swatch[data-selected='true'] {
+  border-color: var(--surface);
+  box-shadow:
+    0 0 0 2px var(--swatch),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+
+/* Dim editing buttons in read mode */
+.editor-shell[data-read-mode='true'] .toolbar .tool-btn:not(.tool-btn--find):not(.tool-btn--readmode):not(.tool-btn--outline):not(.tool-btn--help),
+.editor-shell[data-read-mode='true'] .toolbar .tool-dropdown-trigger,
+.editor-shell[data-read-mode='true'] .toolbar .table-split {
+  opacity: 0.4;
+  pointer-events: none;
 }
