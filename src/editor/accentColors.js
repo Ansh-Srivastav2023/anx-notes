@@ -142,3 +142,24 @@ export const DEFAULT_ACCENT_ID = 'indigo';
 export function getAccent(id) {
   return ACCENT_COLORS.find((c) => c.id === id) || ACCENT_COLORS[0];
 }
+
+
+/* Darken a hex color by a 0–1 factor (0 = original, 1 = black). */
+export function darkenHex(hex, amount) {
+  const clean = hex.replace('#', '');
+  const num = parseInt(clean, 16);
+  const r = Math.max(0, Math.round(((num >> 16) & 0xff) * (1 - amount)));
+  const g = Math.max(0, Math.round(((num >> 8) & 0xff) * (1 - amount)));
+  const b = Math.max(0, Math.round((num & 0xff) * (1 - amount)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+/* Hex → rgba string with the given alpha. */
+export function hexToRgba(hex, alpha) {
+  const clean = hex.replace('#', '');
+  const num = parseInt(clean, 16);
+  const r = (num >> 16) & 0xff;
+  const g = (num >> 8) & 0xff;
+  const b = num & 0xff;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}

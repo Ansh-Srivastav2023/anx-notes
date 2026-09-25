@@ -3,7 +3,7 @@ import SlackEditor from './SlackEditor';
 import DocumentMenu from './DocumentMenu';
 import DocumentsModal from './DocumentsModal';
 import TemplatesModal from './TemplatesModal';
-import { ACCENT_COLORS, DEFAULT_ACCENT_ID, getAccent } from './editor/accentColors';
+import { ACCENT_COLORS, DEFAULT_ACCENT_ID, getAccent, darkenHex, hexToRgba } from './editor/accentColors';
 import {
   loadDocuments,
   saveDocuments,
@@ -351,13 +351,35 @@ export default function App() {
     return () => clearTimeout(t);
   }, [documents, booted]);
 
-    /* Apply accent color to :root whenever theme or accentId changes */
+  /* Apply accent color and toolbar colors whenever theme or accentId changes */
   useEffect(() => {
     const el = document.documentElement;
     const accent = getAccent(accentId);
     const palette = theme === 'dark' ? accent.dark : accent.light;
-    const keys = ['--accent', '--accent-soft', '--accent-border', '--accent-ring'];
-    keys.forEach((k) => el.style.setProperty(k, palette[k]));
+
+    /* 1. Accent tokens (unchanged) */
+    const accentKeys = ['--accent', '--accent-soft', '--accent-border', '--accent-ring'];
+    accentKeys.forEach((k) => el.style.setProperty(k, palette[k]));
+
+    /* 2. Toolbar tokens derived from the accent swatch */
+    const swatch = accent.swatch;
+    const isDark = theme === 'dark';
+
+    // Darken the swatch more in dark mode so the toolbar reads as "chrome"
+    const toolbarBg = darkenHex(swatch, isDark ? 0.86 : 0.76);
+
+    el.style.setProperty('--toolbar-bg', toolbarBg);
+    el.style.setProperty('--toolbar-bg-hover', hexToRgba('#ffffff', isDark ? 0.06 : 0.08));
+    el.style.setProperty('--toolbar-bg-active', hexToRgba(swatch, isDark ? 0.28 : 0.35));
+    el.style.setProperty('--toolbar-text', hexToRgba('#ffffff', isDark ? 0.72 : 0.82));
+    el.style.setProperty('--toolbar-text-hover', '#ffffff');
+    el.style.setProperty('--toolbar-text-active', '#ffffff');
+    el.style.setProperty('--toolbar-border', hexToRgba('#ffffff', isDark ? 0.06 : 0.10));
+    el.style.setProperty('--toolbar-sep', hexToRgba('#ffffff', isDark ? 0.10 : 0.18));
+    el.style.setProperty('--toolbar-surface', hexToRgba('#ffffff', isDark ? 0.05 : 0.06));
+    el.style.setProperty('--toolbar-surface-hover', hexToRgba('#ffffff', isDark ? 0.10 : 0.14));
+    el.style.setProperty('--toolbar-surface-border', hexToRgba('#ffffff', isDark ? 0.10 : 0.16));
+
     try { localStorage.setItem(ACCENT_KEY, accentId); } catch { /* ignore */ }
   }, [accentId, theme]);
 
