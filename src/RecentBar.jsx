@@ -7,7 +7,9 @@ export default function RecentBar({
   onSelect,
   onRemove,
   onNewDocument,
+  onReorder,
 }) {
+  const [draggedId, setDraggedId] = React.useState(null);
   const recents = useMemo(() => {
     const docsById = new Map(documents.map((d) => [d.id, d]));
     return recentIds
@@ -26,6 +28,14 @@ export default function RecentBar({
             key={doc.id}
             className="recent-item"
             data-active={isActive ? 'true' : 'false'}
+            draggable
+            onDragStart={() => setDraggedId(doc.id)}
+            onDragEnd={() => setDraggedId(null)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              if (draggedId && draggedId !== doc.id) onReorder?.(draggedId, doc.id);
+              setDraggedId(null);
+            }}
           >
             <button
               type="button"

@@ -33,6 +33,8 @@ function formatDate(ts) {
 
 export default function WelcomePage({
   documents = [],
+  recentIds = [],
+  onLogoCelebrate,
   onOpenDocument,
   onNewDocument,
   onOpenBrowser,
@@ -41,16 +43,23 @@ export default function WelcomePage({
   theme,
   onToggleTheme,
 }) {
-  const recents = [...documents]
-    .filter((d) => !d.deletedAt)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, 6);
+  const documentsById = new Map(documents.map((d) => [d.id, d]));
+  const recents = recentIds
+    .map((id) => documentsById.get(id))
+    .filter((d) => d && !d.deletedAt)
+    .slice(-6);
 
   return (
     <div className="welcome">
       <div className="welcome-inner">
         <header className="welcome-hero">
-          <div className="welcome-logo" aria-hidden="true">
+          <button
+            type="button"
+            className="welcome-logo"
+            aria-label="Celebrate"
+            title="Celebrate"
+            onClick={onLogoCelebrate}
+          >
   <svg
     width="100%"
     height="100%"
@@ -158,8 +167,8 @@ export default function WelcomePage({
       d="M222 210 L219 228 L235 224 Z"
       fill="white"
     />
-  </svg>
-</div>
+            </svg>
+          </button>
             <h1 className="welcome-title welcome-title--brand">
                 ANX <span className="welcome-title-accent">Notes</span>
             </h1>

@@ -106,6 +106,8 @@ export default function DocumentsModal({
   onDeleteForever,
   onEmptyTrash,
   onNewDocument,
+  onTogglePin,
+  onEditMetadata,
 }) {
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('all'); // 'all' | 'trash'
@@ -161,13 +163,13 @@ export default function DocumentsModal({
     const source = tab === 'trash' ? trashedDocs : activeDocs;
     const sorted = source
       .slice()
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.updatedAt - a.updatedAt);
     const q = query.trim().toLowerCase();
     if (!q) return sorted;
     return sorted.filter((d) => {
       if ((d.title || '').toLowerCase().includes(q)) return true;
       const plain = stripHtml(d.content || '').toLowerCase();
-      return plain.includes(q);
+      return plain.includes(q) || (d.tags || []).some((tag) => tag.toLowerCase().includes(q)) || (d.folder || '').toLowerCase().includes(q);
     });
   }, [tab, activeDocs, trashedDocs, query]);
 
@@ -393,6 +395,24 @@ export default function DocumentsModal({
                         <button
                           type="button"
                           className="docs-modal-icon-btn"
+                          onClick={() => onTogglePin(doc.id)}
+                          aria-label={doc.pinned ? 'Unpin' : 'Pin'}
+                          title={doc.pinned ? 'Unpin' : 'Pin'}
+                        >
+                          {doc.pinned ? '★' : '☆'}
+                        </button>
+                        <button
+                          type="button"
+                          className="docs-modal-icon-btn"
+                          onClick={() => onEditMetadata(doc)}
+                          aria-label="Edit tags and folder"
+                          title="Edit tags and folder"
+                        >
+                          #
+                        </button>
+                        <button
+                          type="button"
+                          className="docs-modal-icon-btn"
                           onClick={() => startRename(doc)}
                           aria-label="Rename"
                           title="Rename"
@@ -415,6 +435,12 @@ export default function DocumentsModal({
                         </button>
                       </>
                     )}
+                  </div>
+                )}
+                {!isTrashed && (doc.tags?.length > 0 || doc.folder) && (
+                  <div className="docs-modal-meta" aria-label="Document metadata">
+                    {doc.folder && <span className="docs-modal-tag">{doc.folder}</span>}
+                    {(doc.tags || []).map((tag) => <span className="docs-modal-tag" key={tag}>#{tag}</span>)}
                   </div>
                 )}
               </div>

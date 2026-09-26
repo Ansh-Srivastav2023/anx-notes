@@ -26,8 +26,10 @@ export async function loadDocuments() {
 export async function saveDocuments(docs) {
   try {
     await set(DOCS_KEY, docs);
+    return true;
   } catch (e) {
     console.error('saveDocuments failed', e);
+    return false;
   }
 }
 
@@ -51,6 +53,17 @@ export async function saveTemplates(templates) {
 export async function clearAllStorage() {
   await del(DOCS_KEY);
   await del(TEMPLATES_KEY);
+  try {
+    [
+      CURRENT_KEY,
+      'anx-notes.recents',
+      'anx-notes.readMode',
+      'anx-notes.accent',
+      'theme',
+    ].forEach((key) => localStorage.removeItem(key));
+  } catch {
+    /* ignore unavailable localStorage */
+  }
 }
 
 /* ---------------- localStorage small stuff ---------------- */
@@ -76,6 +89,9 @@ export function createDocument(title = 'Untitled note') {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     deletedAt: null,
+    pinned: false,
+    tags: [],
+    folder: '',
   };
 }
 
@@ -169,6 +185,14 @@ export function exportDocumentAsMarkdown(doc) {
   );
 }
 
+export function exportBackup(documents, templates = []) {
+  downloadBlob(
+    JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), documents, templates }, null, 2),
+    `anx-notes-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    'application/json'
+  );
+}
+
 /* Minimal HTML → Markdown converter */
 function htmlToMarkdown(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -216,27 +240,157 @@ function htmlToMarkdown(html) {
   return walk(doc.body).trim();
 }
 
-export async function importFromFile(file) {
-  const text = await file.text();
+function markdownToHtml(markdown) {
+  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+  const escape = (value) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const inline = (value) => escape(value)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_]+)_/g, '<em>$1</em>')
+    .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
-  if (file.name.toLowerCase().endsWith('.json')) {
-    const parsed = JSON.parse(text);
+  const output = [];
+  let paragraph = [];
+  let list = null;
+  const flushParagraph = () => {
+    if (paragraph.length) {
+      output.push(`<p>${inline(paragraph.join(' '))}</p>`);
+      paragraph = [];
+    }
+  };
+  const flushList = () => {
+    if (!list) return;
+    output.push(`<${list.type}>${list.items.map((item) => `<li>${inline(item)}</li>`).join('')}</${list.type}>`);
+    list = null;
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      output.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`);
+      continue;
+    }
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const type = unordered ? 'ul' : 'ol';
+      if (!list || list.type !== type) {
+        flushList();
+        list = { type, items: [] };
+      }
+      list.items.push((unordered || ordered)[1]);
+      continue;
+    }
+    if (trimmed.startsWith('> ')) {
+      flushParagraph();
+      flushList();
+      output.push(`<blockquote><p>${inline(trimmed.slice(2))}</p></blockquote>`);
+      continue;
+    }
+    if (/^```/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      const code = [];
+      for (index += 1; index < lines.length; index += 1) {
+        const next = lines[index];
+        if (next.trim().startsWith('```')) break;
+        code.push(next);
+      }
+      output.push(`<pre><code>${escape(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+    paragraph.push(trimmed);
+  }
+  flushParagraph();
+  flushList();
+  return output.join('');
+}
+
+export async function importBackupFile(file) {
+  const text = await file.text();
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new Error('The backup file is invalid JSON.'); }
+  if (!parsed || !Array.isArray(parsed.documents)) {
+    throw new Error('This file is not an ANX Notes backup.');
+  }
+  return {
+    documents: parsed.documents.map((source) => ({
+      ...createDocument(source.title || 'Imported note'),
+      content: typeof source.content === 'string' ? source.content : '',
+      pinned: Boolean(source.pinned),
+      tags: Array.isArray(source.tags) ? source.tags.filter((tag) => typeof tag === 'string') : [],
+      folder: typeof source.folder === 'string' ? source.folder : '',
+    })),
+    templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+  };
+}
+
+export async function importFromFile(file) {
+  if (!file || typeof file.text !== 'function') {
+    throw new Error('No readable file was selected.');
+  }
+
+  const text = await file.text();
+  const fileName = file.name || 'Imported note';
+  const lowerName = fileName.toLowerCase();
+  const isJson = lowerName.endsWith('.json') || file.type === 'application/json';
+  const isMarkdown = /\.markdown?$/.test(lowerName) || file.type === 'text/markdown';
+
+  if (isJson) {
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('The selected JSON file is invalid.');
+    }
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      throw new Error('The selected JSON file does not contain a note.');
+    }
     return {
-      ...createDocument(parsed.title || 'Imported note'),
-      content: parsed.content || '',
+      ...createDocument(
+        typeof parsed.title === 'string' && parsed.title.trim()
+          ? parsed.title.trim()
+          : 'Imported note'
+      ),
+      content: typeof parsed.content === 'string' ? parsed.content : '',
     };
   }
 
-  let content = text;
-  const bodyMatch = text.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  if (bodyMatch) content = bodyMatch[1];
-  content = content.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/, '');
+  if (isMarkdown) {
+    const firstHeading = text.match(/^\s*#\s+(.+)$/m);
+    const title = firstHeading?.[1]?.trim() || fileName.replace(/\.markdown?$/i, '') || 'Imported note';
+    return { ...createDocument(title), content: markdownToHtml(text) };
+  }
 
-  const titleMatch = text.match(/<title>([^<]*)<\/title>/i);
+  // DOMParser decodes entities in the title and handles attributes/newlines
+  // that the old regular expressions missed.
+  const parsedHtml = new DOMParser().parseFromString(text, 'text/html');
+  let content = parsedHtml.body?.innerHTML || text;
+  const firstHeading = parsedHtml.body?.querySelector('h1');
+  if (firstHeading && firstHeading === parsedHtml.body.firstElementChild) {
+    firstHeading.remove();
+    content = parsedHtml.body.innerHTML;
+  }
+  const title = parsedHtml.title?.trim() ||
+    fileName.replace(/\.html?$/i, '') || 'Imported note';
   return {
-    ...createDocument(
-      titleMatch ? titleMatch[1] : file.name.replace(/\.html?$/i, '')
-    ),
+    ...createDocument(title),
     content: content.trim(),
   };
 }

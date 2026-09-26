@@ -16,7 +16,9 @@ import {
   exportDocumentAsHtml,
   exportDocumentAsJson,
   exportDocumentAsMarkdown,
+  exportBackup,
   importFromFile,
+  importBackupFile,
 } from './storage';
 import RecentBar from './RecentBar';
 import CommandPalette from './editor/CommandPalette';
@@ -71,12 +73,55 @@ function saveRecents(ids) {
   }
 }
 
-function AppBrand() {
+const CELEBRATION_COLORS = ['#38bdf8', '#818cf8', '#c084fc', '#fbbf24', '#fb7185', '#34d399'];
+
+function CelebrationBurst({ origin, onDone }) {
+  useEffect(() => {
+    const timer = setTimeout(onDone, 950);
+    return () => clearTimeout(timer);
+  }, [onDone]);
+
+  const particles = Array.from({ length: 30 }, (_, index) => {
+    const angle = (index / 30) * Math.PI * 2;
+    const distance = 46 + (index % 5) * 15;
+    return {
+      color: CELEBRATION_COLORS[index % CELEBRATION_COLORS.length],
+      dx: Math.cos(angle) * distance,
+      dy: Math.sin(angle) * distance - 10,
+      delay: (index % 5) * 18,
+      rotation: 20 + (index % 4) * 20,
+    };
+  });
+
+  return (
+    <div className="celebration-burst" style={{ left: origin.x, top: origin.y }} aria-hidden="true">
+      <span className="celebration-flash" />
+      {particles.map((particle, index) => (
+        <span
+          className="celebration-particle"
+          key={index}
+          style={{
+            backgroundColor: particle.color,
+            '--burst-x': `${particle.dx}px`,
+            '--burst-y': `${particle.dy}px`,
+            '--burst-delay': `${particle.delay}ms`,
+            '--burst-rotation': `${particle.rotation}deg`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AppBrand({ onCelebrate }) {
   return (
     <div className="app-brand">
-      <div
+      <button
+        type="button"
         className="app-logo"
         aria-label="ANX Notes Logo"
+        title="Celebrate"
+        onClick={onCelebrate}
       >
         <svg
           width="28"
@@ -236,7 +281,7 @@ function AppBrand() {
             fill="white"
           />
         </svg>
-      </div>
+      </button>
 
       <div className="app-brand-text">
         <span className="app-brand-title">
@@ -291,9 +336,17 @@ export default function App() {
   const [currentDocId, setCurrentDocId] = useState(loadCurrentId);
   const [helpOpen, setHelpOpen] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('saved');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [undoPayload, setUndoPayload] = useState(null);
   const [recentIds, setRecentIds] = useState(loadRecents);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [celebration, setCelebration] = useState(null);
+  const recentIdsRef = useRef(recentIds);
+
+  useEffect(() => {
+    recentIdsRef.current = recentIds;
+  }, [recentIds]);
 
   const [readMode, setReadMode] = useState(() => {
     try { return localStorage.getItem(READMODE_KEY) === 'true'; } catch { return false; }
@@ -311,6 +364,7 @@ export default function App() {
   const saveTimerRef = useRef(null);
   const cursorPositionsRef = useRef({});
   const pendingContentRef = useRef(null);
+  const touchStartRef = useRef(null);
 
   /* Boot: async load from IndexedDB */
   useEffect(() => {
@@ -326,7 +380,17 @@ export default function App() {
         const target = initial.find(
           (d) => d.id === currentDocId && !d.deletedAt
         );
-        if (!target) setCurrentDocId(null);
+        if (!target) {
+          setCurrentDocId(null);
+        } else {
+          // A persisted document must also have a visible tab after reload.
+          setRecentIds((prev) => {
+            if (prev.includes(target.id)) return prev;
+            const next = [...prev, target.id].slice(-MAX_RECENTS);
+            saveRecents(next);
+            return next;
+          });
+        }
       }
       setBooted(true);
     })();
@@ -342,11 +406,12 @@ export default function App() {
   /* Persist documents + templates (debounced, async) */
   useEffect(() => {
     if (!booted) return;
+    setSaveStatus('saving');
     const t = setTimeout(() => {
       // Never persist blank untitled docs — they'll never come back
       // from IndexedDB, so nothing shows up on reload.
       const toSave = documents.filter((d) => !isBlankDoc(d));
-      saveDocuments(toSave);
+      saveDocuments(toSave).then((saved) => setSaveStatus(saved ? 'saved' : 'offline'));
     }, 200);
     return () => clearTimeout(t);
   }, [documents, booted]);
@@ -365,20 +430,32 @@ export default function App() {
     const swatch = accent.swatch;
     const isDark = theme === 'dark';
 
-    // Darken the swatch more in dark mode so the toolbar reads as "chrome"
-    const toolbarBg = darkenHex(swatch, isDark ? 0.86 : 0.76);
-
-    el.style.setProperty('--toolbar-bg', toolbarBg);
-    el.style.setProperty('--toolbar-bg-hover', hexToRgba('#ffffff', isDark ? 0.06 : 0.08));
-    el.style.setProperty('--toolbar-bg-active', hexToRgba(swatch, isDark ? 0.28 : 0.35));
-    el.style.setProperty('--toolbar-text', hexToRgba('#ffffff', isDark ? 0.72 : 0.82));
-    el.style.setProperty('--toolbar-text-hover', '#ffffff');
-    el.style.setProperty('--toolbar-text-active', '#ffffff');
-    el.style.setProperty('--toolbar-border', hexToRgba('#ffffff', isDark ? 0.06 : 0.10));
-    el.style.setProperty('--toolbar-sep', hexToRgba('#ffffff', isDark ? 0.10 : 0.18));
-    el.style.setProperty('--toolbar-surface', hexToRgba('#ffffff', isDark ? 0.05 : 0.06));
-    el.style.setProperty('--toolbar-surface-hover', hexToRgba('#ffffff', isDark ? 0.10 : 0.14));
-    el.style.setProperty('--toolbar-surface-border', hexToRgba('#ffffff', isDark ? 0.10 : 0.16));
+    // Keep the toolbar understated and use the accent for interaction states.
+    // This keeps bright accents from turning the whole toolbar into a banner.
+    el.style.setProperty('--toolbar-bg', isDark ? darkenHex(swatch, 0.84) : '#f8fafc');
+    el.style.setProperty('--toolbar-bg-hover', isDark
+      ? hexToRgba('#ffffff', 0.07)
+      : hexToRgba('#0f172a', 0.055));
+    el.style.setProperty('--toolbar-bg-active', hexToRgba(swatch, isDark ? 0.24 : 0.10));
+    el.style.setProperty('--toolbar-text', isDark ? 'rgba(255, 255, 255, 0.72)' : '#475569');
+    el.style.setProperty('--toolbar-text-hover', isDark ? '#ffffff' : '#0f172a');
+    el.style.setProperty('--toolbar-text-active', palette['--accent']);
+    el.style.setProperty('--toolbar-border', isDark
+      ? hexToRgba('#ffffff', 0.08)
+      : '#e2e8f0');
+    el.style.setProperty('--toolbar-sep', isDark
+      ? hexToRgba('#ffffff', 0.12)
+      : hexToRgba('#0f172a', 0.12));
+    el.style.setProperty('--toolbar-surface', isDark
+      ? hexToRgba('#ffffff', 0.05)
+      : hexToRgba('#0f172a', 0.035));
+    el.style.setProperty('--toolbar-surface-hover', isDark
+      ? hexToRgba('#ffffff', 0.10)
+      : hexToRgba('#0f172a', 0.07));
+    el.style.setProperty('--toolbar-surface-border', isDark
+      ? hexToRgba('#ffffff', 0.12)
+      : hexToRgba('#0f172a', 0.12));
+    el.style.setProperty('--toolbar-accent-line', hexToRgba(swatch, isDark ? 0.55 : 0.28));
 
     try { localStorage.setItem(ACCENT_KEY, accentId); } catch { /* ignore */ }
   }, [accentId, theme]);
@@ -458,11 +535,12 @@ export default function App() {
   }, []);
 
   const handleRemoveRecent = useCallback((id) => {
-    setRecentIds((prev) => {
-      const next = prev.filter((x) => x !== id);
-      saveRecents(next);
-      return next;
-    });
+    // Use the ref here because React state updates are asynchronous. This
+    // prevents a rapid close/select sequence from choosing a stale tab.
+    const nextRecents = recentIdsRef.current.filter((x) => x !== id);
+    recentIdsRef.current = nextRecents;
+    setRecentIds(nextRecents);
+    saveRecents(nextRecents);
 
     // Only pivot the current doc if we just closed the active tab.
     // Closing a background tab shouldn't disturb what you're editing.
@@ -471,12 +549,10 @@ export default function App() {
     flushSave();
 
     // Prefer the next still-valid recent tab (keeps the strip order intuitive)
-    const nextRecent = recentIds
-      .filter((x) => x !== id)
-      .find((rid) => {
+    const nextRecent = nextRecents.find((rid) => {
         const doc = documents.find((d) => d.id === rid);
         return doc && !doc.deletedAt;
-      });
+    });
 
     if (nextRecent) {
       setCurrentDocId(nextRecent);
@@ -487,10 +563,11 @@ export default function App() {
     // The doc itself stays in `documents` and remains accessible from
     // the ⋯ menu, the command palette, and the welcome page's Recent list.
     setCurrentDocId(null);
-  }, [documents, recentIds, flushSave]);
+  }, [documents, flushSave]);
 
   const handleEditorChange = useCallback(
     (html) => {
+      setSaveStatus('saving');
       pendingContentRef.current = html;
       const docId = currentDocIdRef.current;
       if (!docId) return;
@@ -548,10 +625,13 @@ export default function App() {
   );
 
   const handleSaveNow = useCallback(() => {
+    setSaveStatus('saving');
     flushSave();
+    saveDocuments(documents.filter((d) => !isBlankDoc(d)))
+      .then((saved) => setSaveStatus(saved ? 'saved' : 'offline'));
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 1200);
-  }, [flushSave]);
+  }, [documents, flushSave]);
 
   const handleRename = useCallback((id, title) => {
     if (!id) return;
@@ -560,6 +640,41 @@ export default function App() {
         d.id === id ? { ...d, title, updatedAt: Date.now() } : d
       )
     );
+  }, []);
+
+  const handleTogglePin = useCallback((id) => {
+    setDocuments((docs) => docs.map((doc) => (
+      doc.id === id ? { ...doc, pinned: !doc.pinned, updatedAt: Date.now() } : doc
+    )));
+  }, []);
+
+  const handleEditMetadata = useCallback((doc) => {
+    const tags = window.prompt('Tags (comma separated)', (doc.tags || []).join(', '));
+    if (tags === null) return;
+    const folder = window.prompt('Folder', doc.folder || '');
+    if (folder === null) return;
+    setDocuments((docs) => docs.map((item) => (
+      item.id === doc.id
+        ? {
+            ...item,
+            tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 12),
+            folder: folder.trim().slice(0, 60),
+            updatedAt: Date.now(),
+          }
+        : item
+    )));
+  }, []);
+
+  const handleReorderRecent = useCallback((draggedId, targetId) => {
+    const next = [...recentIdsRef.current];
+    const from = next.indexOf(draggedId);
+    const to = next.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    next.splice(from, 1);
+    next.splice(to, 0, draggedId);
+    recentIdsRef.current = next;
+    setRecentIds(next);
+    saveRecents(next);
   }, []);
 
   const handleDelete = useCallback((id) => {
@@ -574,8 +689,22 @@ export default function App() {
     );
 
     if (id === currentDocIdRef.current) {
-      const next = documents.find((d) => d.id !== id && !d.deletedAt);
-      if (next) setCurrentDocId(next.id);
+      const nextRecent = recentIdsRef.current
+        .filter((recentId) => recentId !== id)
+        .map((recentId) => documents.find((d) => d.id === recentId))
+        .find((d) => d && !d.deletedAt);
+      const next = nextRecent || documents.find((d) => d.id !== id && !d.deletedAt);
+      if (next) {
+        setCurrentDocId(next.id);
+        setRecentIds((prev) => {
+          const withoutDeleted = prev.filter((recentId) => recentId !== id);
+          if (withoutDeleted.includes(next.id)) return withoutDeleted;
+          const nextRecents = [...withoutDeleted, next.id].slice(-MAX_RECENTS);
+          recentIdsRef.current = nextRecents;
+          saveRecents(nextRecents);
+          return nextRecents;
+        });
+      }
     }
 
     setUndoPayload({
@@ -592,23 +721,51 @@ export default function App() {
     setDocuments((docs) =>
       docs.map((d) => (d.id === id ? { ...d, deletedAt: null } : d))
     );
-  }, []);
-
-  const handleDeleteForever = useCallback((id) => {
-    setDocuments((docs) => {
-      const next = docs.filter((d) => d.id !== id);
-      if (next.filter((d) => !d.deletedAt).length === 0) {
-        const fresh = createDocument('Untitled note');
-        setCurrentDocId(fresh.id);
-        return [fresh, ...next];
-      }
+    setRecentIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id].slice(-MAX_RECENTS);
+      recentIdsRef.current = next;
+      saveRecents(next);
       return next;
     });
   }, []);
 
+  const handleDeleteForever = useCallback((id) => {
+    const remaining = documents.filter((d) => d.id !== id);
+    const active = remaining.filter((d) => !d.deletedAt);
+    const currentId = currentDocIdRef.current;
+    const currentStillValid = active.some((d) => d.id === currentId);
+    const nextCurrent = currentStillValid
+      ? currentId
+      : currentId
+        ? active[0]?.id || null
+        : null;
+
+    setDocuments(remaining);
+    setCurrentDocId(nextCurrent);
+
+    const nextRecents = recentIdsRef.current.filter((recentId) => recentId !== id);
+    recentIdsRef.current = nextRecents;
+    setRecentIds(nextRecents);
+    saveRecents(nextRecents);
+  }, [documents]);
+
   const handleEmptyTrash = useCallback(() => {
-    setDocuments((docs) => docs.filter((d) => !d.deletedAt));
-  }, []);
+    const remaining = documents.filter((d) => !d.deletedAt);
+    const currentId = currentDocIdRef.current;
+    const currentStillValid = remaining.some((d) => d.id === currentId);
+    setDocuments(remaining);
+    if (currentId && !currentStillValid) {
+      const nextCurrent = remaining[0]?.id || null;
+      setCurrentDocId(nextCurrent);
+      if (nextCurrent && !recentIdsRef.current.includes(nextCurrent)) {
+        const nextRecents = [...recentIdsRef.current, nextCurrent].slice(-MAX_RECENTS);
+        recentIdsRef.current = nextRecents;
+        setRecentIds(nextRecents);
+        saveRecents(nextRecents);
+      }
+    }
+  }, [documents]);
 
   /* --- templates --- */
 
@@ -663,6 +820,10 @@ export default function App() {
     if (doc) exportDocumentAsMarkdown(doc);
   }, [documents]);
 
+  const handleExportBackup = useCallback(() => {
+    exportBackup(documents, templates);
+  }, [documents, templates]);
+
   const handleImportFile = useCallback(
     async (file) => {
       flushSave();
@@ -681,8 +842,59 @@ export default function App() {
     [flushSave]
   );
 
+  const handleImportFiles = useCallback(async (files) => {
+    const selected = Array.from(files || []).filter(Boolean);
+    if (!selected.length) return;
+    flushSave();
+    const imported = [];
+    for (const file of selected) imported.push(await importFromFile(file));
+    setDocuments((docs) => [...imported, ...docs]);
+    const last = imported[imported.length - 1];
+    setCurrentDocId(last.id);
+    setRecentIds((prev) => {
+      const next = [...prev, ...imported.map((doc) => doc.id)].slice(-MAX_RECENTS);
+      saveRecents(next);
+      return next;
+    });
+  }, [flushSave]);
+
+  const handleImportBackup = useCallback(async (file) => {
+    const backup = await importBackupFile(file);
+    if (!backup.documents.length) throw new Error('The backup has no documents.');
+    flushSave();
+    setDocuments((docs) => [...backup.documents, ...docs]);
+    setTemplates((prev) => [...backup.templates, ...prev]);
+    const first = backup.documents[0];
+    setCurrentDocId(first.id);
+    setRecentIds((prev) => {
+      const next = [...prev, ...backup.documents.map((doc) => doc.id)].slice(-MAX_RECENTS);
+      saveRecents(next);
+      return next;
+    });
+  }, [flushSave]);
+
+  const handleDropFiles = useCallback(async (event) => {
+    event.preventDefault();
+    setIsDraggingFile(false);
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (!files.length) return;
+    try {
+      await handleImportFiles(files);
+    } catch (error) {
+      window.alert(`Could not import files: ${error.message}`);
+    }
+  }, [handleImportFiles]);
+
   const toggleTheme = useCallback(() => {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  }, []);
+
+  const celebrate = useCallback((event) => {
+    setCelebration({ id: Date.now(), x: event.clientX, y: event.clientY });
+  }, []);
+
+  const clearCelebration = useCallback(() => {
+    setCelebration(null);
   }, []);
 
   /* Global shortcuts */
@@ -709,6 +921,37 @@ export default function App() {
     return () => document.removeEventListener('keydown', onKey);
   }, [handleSaveNow, handleNewDocument]);
 
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Tab' || !(event.ctrlKey || event.metaKey)) return;
+      const ids = recentIdsRef.current.filter((id) => documents.some((doc) => doc.id === id && !doc.deletedAt));
+      if (ids.length < 2) return;
+      event.preventDefault();
+      const currentIndex = ids.indexOf(currentDocIdRef.current);
+      const direction = event.shiftKey ? -1 : 1;
+      const nextId = ids[(currentIndex + direction + ids.length) % ids.length];
+      handleSelectDocument(nextId);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [documents, handleSelectDocument]);
+
+  const handleTouchStart = useCallback((event) => {
+    if (event.touches.length === 1) touchStartRef.current = event.touches[0].clientX;
+  }, []);
+
+  const handleTouchEnd = useCallback((event) => {
+    if (touchStartRef.current === null) return;
+    const delta = event.changedTouches[0].clientX - touchStartRef.current;
+    touchStartRef.current = null;
+    if (Math.abs(delta) < 70) return;
+    const ids = recentIdsRef.current.filter((id) => documents.some((doc) => doc.id === id && !doc.deletedAt));
+    const index = ids.indexOf(currentDocIdRef.current);
+    if (index < 0 || ids.length < 2) return;
+    const nextId = ids[(index + (delta < 0 ? 1 : -1) + ids.length) % ids.length];
+    handleSelectDocument(nextId);
+  }, [documents, handleSelectDocument]);
+
   if (!booted) {
     return (
       <div className="app app--loading">
@@ -720,7 +963,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <AppBrand />
+        <AppBrand onCelebrate={celebrate} />
 
         <RecentBar
           documents={documents}
@@ -729,7 +972,13 @@ export default function App() {
           onSelect={handleSelectDocument}
           onRemove={handleRemoveRecent}
           onNewDocument={handleNewDocument}
+          onReorder={handleReorderRecent}
         />
+
+        <div className={`save-status save-status--${saveStatus}`} role="status" aria-live="polite">
+          <span className="save-status-dot" aria-hidden="true" />
+          {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline' : 'Saved'}
+        </div>
 
         <DocumentMenu
           documents={documents.filter((d) => !d.deletedAt)}
@@ -742,7 +991,11 @@ export default function App() {
           onExportHtml={handleExportHtml}
           onExportJson={handleExportJson}
           onExportMarkdown={handleExportMarkdown}
+          onExportBackup={handleExportBackup}
           onImportFile={handleImportFile}
+          onImportFiles={handleImportFiles}
+          onImportBackup={handleImportBackup}
+          saveStatus={saveStatus}
           theme={theme}
           onToggleTheme={toggleTheme}
           onOpenShortcuts={() => setHelpOpen(true)}
@@ -756,7 +1009,22 @@ export default function App() {
         />
       </header>
 
-        <main className="app-main">
+        <main
+          className={`app-main${isDraggingFile ? ' app-main--drop-active' : ''}`}
+          onDragOver={(event) => {
+            if (event.dataTransfer?.types?.includes('Files')) {
+              event.preventDefault();
+              setIsDraggingFile(true);
+            }
+          }}
+          onDragLeave={(event) => {
+            if (event.currentTarget === event.target) setIsDraggingFile(false);
+          }}
+          onDrop={handleDropFiles}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {isDraggingFile && <div className="file-drop-overlay">Drop files to import</div>}
         {currentDocId ? (
           <SlackEditor
             key={currentDocId}
@@ -779,6 +1047,8 @@ export default function App() {
         ) : (
           <WelcomePage
             documents={documents}
+            recentIds={recentIds}
+            onLogoCelebrate={celebrate}
             onOpenDocument={handleSelectDocument}
             onNewDocument={handleNewDocument}
             onOpenBrowser={() => setDocsModalOpen(true)}
@@ -802,6 +1072,8 @@ export default function App() {
         onDeleteForever={handleDeleteForever}
         onEmptyTrash={handleEmptyTrash}
         onNewDocument={handleNewDocument}
+        onTogglePin={handleTogglePin}
+        onEditMetadata={handleEditMetadata}
       />
 
       <TemplatesModal
@@ -845,6 +1117,14 @@ export default function App() {
         <UndoToast
           payload={undoPayload}
           onDismiss={() => setUndoPayload(null)}
+        />
+      )}
+
+      {celebration && (
+        <CelebrationBurst
+          key={celebration.id}
+          origin={celebration}
+          onDone={clearCelebration}
         />
       )}
     </div>

@@ -82,8 +82,12 @@ export default function DocumentMenu({
   onExportHtml,
   onExportMarkdown,
   onExportJson,
+  onExportBackup,
   onImportFile,
   theme,
+  onImportFiles,
+  onImportBackup,
+  saveStatus = 'saved',
   onToggleTheme,
   onOpenShortcuts,
   onSaveAsTemplate,
@@ -99,6 +103,7 @@ export default function DocumentMenu({
   const [draftTitle, setDraftTitle] = useState('');
 
   const fileInputRef = useRef(null);
+  const backupInputRef = useRef(null);
   const renameInputRef = useRef(null);
   const isCommittedRef = useRef(false);
 
@@ -134,13 +139,27 @@ export default function DocumentMenu({
   };
 
   const handleFilePick = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     try {
-      await onImportFile(file);
+      if (onImportFiles) await onImportFiles(files);
+      else await onImportFile(files[0]);
       setIsOpen(false);
     } catch (err) {
       alert(`Could not import file: ${err.message}`);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleBackupPick = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !onImportBackup) return;
+    try {
+      await onImportBackup(file);
+      setIsOpen(false);
+    } catch (err) {
+      alert(`Could not restore backup: ${err.message}`);
     } finally {
       e.target.value = '';
     }
@@ -298,12 +317,40 @@ export default function DocumentMenu({
   <span>Export as Markdown</span>
 </button>
 
+          <button
+            type="button"
+            role="menuitem"
+            className="doc-menu-item"
+            onClick={() => executeAction(onExportBackup)}
+          >
+            <span>Backup all notes</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="doc-menu-item"
+            onClick={() => backupInputRef.current?.click()}
+          >
+            <span>Restore backup</span>
+          </button>
+          <div className="doc-menu-status" role="status">
+            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline — not saved' : 'Saved'}
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
-            accept=".html,.htm,.json,text/html,application/json"
+            accept=".html,.htm,.json,.md,.markdown,text/html,application/json,text/markdown"
+            multiple
             style={{ display: 'none' }}
             onChange={handleFilePick}
+          />
+          <input
+            ref={backupInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+            onChange={handleBackupPick}
           />
 
           <div className="doc-menu-sep" />
