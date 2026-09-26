@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import SlackEditor from './SlackEditor';
 import DocumentMenu from './DocumentMenu';
 import DocumentsModal from './DocumentsModal';
@@ -36,7 +36,9 @@ function isBlankDoc(doc) {
   if (!doc || doc.deletedAt) return false;
 
   const html = (doc.content || '').trim();
-  if (!html) return true;
+  const title = (doc.title || '').trim();
+  const hasMetadata = Boolean(doc.pinned || doc.folder || doc.tags?.length);
+  if (!html) return !hasMetadata && (!title || title === 'Untitled note');
 
   // If the user inserted a table or image, that's intentional — keep it
   if (/<(table|img)\b/i.test(html)) return false;
@@ -49,17 +51,27 @@ function isBlankDoc(doc) {
   if (text) return false;
 
   // No text at all — if the user has not renamed it, it's blank
-  const title = (doc.title || '').trim();
   if (title && title !== 'Untitled note') return false;
+  if (hasMetadata) return false;
 
   return true;
+}
+
+function applyPendingContent(documents, pending) {
+  const timestamp = Date.now();
+  return documents.map((doc) => {
+    const html = pending.get(doc.id);
+    return html === undefined ? doc : { ...doc, content: html, updatedAt: timestamp };
+  });
 }
 
 function loadRecents() {
   try {
     const raw = localStorage.getItem(RECENTS_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    return Array.isArray(arr)
+      ? [...new Set(arr.filter((id) => typeof id === 'string' && id))].slice(-MAX_RECENTS)
+      : [];
   } catch {
     return [];
   }
@@ -295,8 +307,12 @@ function AppBrand({ onCelebrate }) {
 
 function getInitialTheme() {
   if (typeof window === 'undefined') return 'light';
-  const saved = window.localStorage.getItem('theme');
-  if (saved === 'light' || saved === 'dark') return saved;
+  try {
+    const saved = window.localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* use the system preference */
+  }
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
@@ -328,6 +344,7 @@ function UndoToast({ payload, onDismiss }) {
 
 export default function App() {
   const [booted, setBooted] = useState(false);
+  const [bootError, setBootError] = useState('');
   const [theme, setTheme] = useState(getInitialTheme);
   const [docsModalOpen, setDocsModalOpen] = useState(false);
   const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
@@ -344,9 +361,19 @@ export default function App() {
   const [celebration, setCelebration] = useState(null);
   const recentIdsRef = useRef(recentIds);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     recentIdsRef.current = recentIds;
   }, [recentIds]);
+
+  const commitRecentIds = useCallback((update) => {
+    const previous = recentIdsRef.current;
+    const next = typeof update === 'function' ? update(previous) : update;
+    if (!Array.isArray(next) || next === previous) return previous;
+    recentIdsRef.current = next;
+    setRecentIds(next);
+    saveRecents(next);
+    return next;
+  }, []);
 
   const [readMode, setReadMode] = useState(() => {
     try { return localStorage.getItem(READMODE_KEY) === 'true'; } catch { return false; }
@@ -357,42 +384,50 @@ export default function App() {
   const [outlineOpen, setOutlineOpen] = useState(false);
 
   const currentDocIdRef = useRef(currentDocId);
-  useEffect(() => {
+  useLayoutEffect(() => {
     currentDocIdRef.current = currentDocId;
   }, [currentDocId]);
 
   const saveTimerRef = useRef(null);
+  const saveRevisionRef = useRef(0);
+  const documentsRef = useRef(documents);
   const cursorPositionsRef = useRef({});
-  const pendingContentRef = useRef(null);
+  const pendingContentRef = useRef(new Map());
   const touchStartRef = useRef(null);
+
+  useLayoutEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
 
   /* Boot: async load from IndexedDB */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [docs, tpls] = await Promise.all([loadDocuments(), loadTemplates()]);
-      if (cancelled) return;
-      const initial =
-        docs.length > 0 ? docs : [createDocument('My first note')];
-      setDocuments(initial);
-      setTemplates(tpls);
-      if (currentDocId) {
-        const target = initial.find(
-          (d) => d.id === currentDocId && !d.deletedAt
-        );
-        if (!target) {
-          setCurrentDocId(null);
-        } else {
-          // A persisted document must also have a visible tab after reload.
-          setRecentIds((prev) => {
-            if (prev.includes(target.id)) return prev;
-            const next = [...prev, target.id].slice(-MAX_RECENTS);
-            saveRecents(next);
-            return next;
-          });
+      try {
+        const [docs, tpls] = await Promise.all([loadDocuments(), loadTemplates()]);
+        if (cancelled) return;
+        const initial = docs.length > 0 ? docs : [createDocument('My first note')];
+        setDocuments(initial);
+        setTemplates(tpls);
+        if (currentDocId) {
+          const target = initial.find(
+            (d) => d.id === currentDocId && !d.deletedAt
+          );
+          if (!target) {
+            currentDocIdRef.current = null;
+            setCurrentDocId(null);
+          } else {
+            // A persisted document must also have a visible tab after reload.
+            commitRecentIds((prev) => {
+              if (prev.includes(target.id)) return prev;
+              return [...prev, target.id].slice(-MAX_RECENTS);
+            });
+          }
         }
+        setBooted(true);
+      } catch (error) {
+        if (!cancelled) setBootError(error.message || 'Browser storage is unavailable.');
       }
-      setBooted(true);
     })();
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -400,18 +435,23 @@ export default function App() {
   /* Persist theme */
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    window.localStorage.setItem('theme', theme);
+    try { window.localStorage.setItem('theme', theme); } catch { /* ignore */ }
   }, [theme]);
 
   /* Persist documents + templates (debounced, async) */
   useEffect(() => {
     if (!booted) return;
     setSaveStatus('saving');
+    const revision = ++saveRevisionRef.current;
     const t = setTimeout(() => {
       // Never persist blank untitled docs — they'll never come back
       // from IndexedDB, so nothing shows up on reload.
       const toSave = documents.filter((d) => !isBlankDoc(d));
-      saveDocuments(toSave).then((saved) => setSaveStatus(saved ? 'saved' : 'offline'));
+      saveDocuments(toSave).then((saved) => {
+        if (saveRevisionRef.current === revision) {
+          setSaveStatus(saved ? 'saved' : 'offline');
+        }
+      });
     }, 200);
     return () => clearTimeout(t);
   }, [documents, booted]);
@@ -507,31 +547,34 @@ export default function App() {
     const validIds = new Set(
       documents.filter((d) => !d.deletedAt).map((d) => d.id)
     );
-    setRecentIds((prev) => {
+    commitRecentIds((prev) => {
       const next = prev.filter((id) => validIds.has(id));
       if (next.length === prev.length) return prev;
-      saveRecents(next);
       return next;
     });
-  }, [documents, booted]);
+  }, [documents, booted, commitRecentIds]);
 
   const currentDoc = documents.find((d) => d.id === currentDocId && !d.deletedAt);
+
+  useEffect(() => {
+    if (!booted || !currentDocId || currentDoc) return;
+    currentDocIdRef.current = null;
+    setCurrentDocId(null);
+  }, [booted, currentDocId, currentDoc]);
 
   const flushSave = useCallback(() => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    if (pendingContentRef.current !== null && currentDocIdRef.current) {
-      const docId = currentDocIdRef.current;
-      const html = pendingContentRef.current;
-      setDocuments((docs) =>
-        docs.map((d) =>
-          d.id === docId ? { ...d, content: html, updatedAt: Date.now() } : d
-        )
-      );
-      pendingContentRef.current = null;
-    }
+    if (pendingContentRef.current.size === 0) return;
+    const pending = new Map(pendingContentRef.current);
+    setDocuments((docs) => applyPendingContent(docs, pending));
+    pending.forEach((html, docId) => {
+      if (pendingContentRef.current.get(docId) === html) {
+        pendingContentRef.current.delete(docId);
+      }
+    });
   }, []);
 
   const handleRemoveRecent = useCallback((id) => {
@@ -555,6 +598,7 @@ export default function App() {
     });
 
     if (nextRecent) {
+      currentDocIdRef.current = nextRecent;
       setCurrentDocId(nextRecent);
       return;
     }
@@ -562,24 +606,26 @@ export default function App() {
     // Nothing else open → clear the current doc so the welcome page shows.
     // The doc itself stays in `documents` and remains accessible from
     // the ⋯ menu, the command palette, and the welcome page's Recent list.
+    currentDocIdRef.current = null;
     setCurrentDocId(null);
   }, [documents, flushSave]);
 
   const handleEditorChange = useCallback(
-    (html) => {
+    (html, sourceDocId) => {
       setSaveStatus('saving');
-      pendingContentRef.current = html;
-      const docId = currentDocIdRef.current;
+      const docId = sourceDocId || currentDocIdRef.current;
       if (!docId) return;
+      pendingContentRef.current.set(docId, html);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        setDocuments((docs) =>
-          docs.map((d) =>
-            d.id === docId ? { ...d, content: html, updatedAt: Date.now() } : d
-          )
-        );
+        const pending = new Map(pendingContentRef.current);
+        setDocuments((docs) => applyPendingContent(docs, pending));
+        pending.forEach((latestHtml, pendingDocId) => {
+          if (pendingContentRef.current.get(pendingDocId) === latestHtml) {
+            pendingContentRef.current.delete(pendingDocId);
+          }
+        });
         saveTimerRef.current = null;
-        pendingContentRef.current = null;
       }, 400);
     },
     []
@@ -587,22 +633,46 @@ export default function App() {
 
   useEffect(() => () => flushSave(), [flushSave]);
 
+  useEffect(() => {
+    const persistPending = () => {
+      if (pendingContentRef.current.size === 0) return;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      const pending = new Map(pendingContentRef.current);
+      const snapshot = applyPendingContent(documentsRef.current, pending);
+      documentsRef.current = snapshot;
+      pendingContentRef.current.clear();
+      setDocuments(snapshot);
+      saveDocuments(snapshot.filter((doc) => !isBlankDoc(doc)));
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') persistPending();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', persistPending);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', persistPending);
+    };
+  }, []);
+
   /* --- documents --- */
 
   const handleNewDocument = useCallback(() => {
     flushSave();
     const doc = createDocument('Untitled note');
     setDocuments((docs) => [doc, ...docs]);
+    currentDocIdRef.current = doc.id;
     setCurrentDocId(doc.id);
 
     // Add the new document to the recent bar without reordering existing tabs
-    setRecentIds((prev) => {
+    commitRecentIds((prev) => {
       if (prev.includes(doc.id)) return prev;
-      const next = [...prev, doc.id].slice(-MAX_RECENTS);
-      saveRecents(next);
-      return next;
+      return [...prev, doc.id].slice(-MAX_RECENTS);
     });
-  }, [flushSave]);
+  }, [flushSave, commitRecentIds]);
 
   const handleSelectDocument = useCallback(
     (id) => {
@@ -610,28 +680,32 @@ export default function App() {
       if (!target || target.deletedAt) return;
       if (id !== currentDocId) {
         flushSave();
+        currentDocIdRef.current = id;
         setCurrentDocId(id);
       }
 
       // Ensure the doc appears in the bar without disturbing existing positions
-      setRecentIds((prev) => {
+      commitRecentIds((prev) => {
         if (prev.includes(id)) return prev;
-        const next = [...prev, id].slice(-MAX_RECENTS);
-        saveRecents(next);
-        return next;
+        return [...prev, id].slice(-MAX_RECENTS);
       });
     },
-    [currentDocId, documents, flushSave]
+    [currentDocId, documents, flushSave, commitRecentIds]
   );
 
   const handleSaveNow = useCallback(() => {
     setSaveStatus('saving');
+    const snapshot = applyPendingContent(documentsRef.current, pendingContentRef.current);
     flushSave();
-    saveDocuments(documents.filter((d) => !isBlankDoc(d)))
-      .then((saved) => setSaveStatus(saved ? 'saved' : 'offline'));
+    const revision = ++saveRevisionRef.current;
+    saveDocuments(snapshot.filter((doc) => !isBlankDoc(doc))).then((saved) => {
+      if (saveRevisionRef.current === revision) {
+        setSaveStatus(saved ? 'saved' : 'offline');
+      }
+    });
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 1200);
-  }, [documents, flushSave]);
+  }, [flushSave]);
 
   const handleRename = useCallback((id, title) => {
     if (!id) return;
@@ -682,6 +756,8 @@ export default function App() {
     const target = documents.find((d) => d.id === id);
     if (!target) return;
 
+    flushSave();
+
     setDocuments((docs) =>
       docs.map((d) =>
         d.id === id ? { ...d, deletedAt: Date.now() } : d
@@ -694,17 +770,17 @@ export default function App() {
         .map((recentId) => documents.find((d) => d.id === recentId))
         .find((d) => d && !d.deletedAt);
       const next = nextRecent || documents.find((d) => d.id !== id && !d.deletedAt);
-      if (next) {
-        setCurrentDocId(next.id);
-        setRecentIds((prev) => {
-          const withoutDeleted = prev.filter((recentId) => recentId !== id);
-          if (withoutDeleted.includes(next.id)) return withoutDeleted;
-          const nextRecents = [...withoutDeleted, next.id].slice(-MAX_RECENTS);
-          recentIdsRef.current = nextRecents;
-          saveRecents(nextRecents);
-          return nextRecents;
-        });
-      }
+      const nextId = next?.id || null;
+      currentDocIdRef.current = nextId;
+      setCurrentDocId(nextId);
+      commitRecentIds((prev) => {
+        const withoutDeleted = prev.filter((recentId) => recentId !== id);
+        return nextId && !withoutDeleted.includes(nextId)
+          ? [...withoutDeleted, nextId].slice(-MAX_RECENTS)
+          : withoutDeleted;
+      });
+    } else {
+      commitRecentIds((prev) => prev.filter((recentId) => recentId !== id));
     }
 
     setUndoPayload({
@@ -713,22 +789,24 @@ export default function App() {
         setDocuments((docs) =>
           docs.map((d) => (d.id === id ? { ...d, deletedAt: null } : d))
         );
+        commitRecentIds((prev) => prev.includes(id) ? prev : [...prev, id].slice(-MAX_RECENTS));
+        if (!currentDocIdRef.current) {
+          currentDocIdRef.current = id;
+          setCurrentDocId(id);
+        }
       },
     });
-  }, [documents]);
+  }, [documents, flushSave, commitRecentIds]);
 
   const handleRestore = useCallback((id) => {
     setDocuments((docs) =>
       docs.map((d) => (d.id === id ? { ...d, deletedAt: null } : d))
     );
-    setRecentIds((prev) => {
+    commitRecentIds((prev) => {
       if (prev.includes(id)) return prev;
-      const next = [...prev, id].slice(-MAX_RECENTS);
-      recentIdsRef.current = next;
-      saveRecents(next);
-      return next;
+      return [...prev, id].slice(-MAX_RECENTS);
     });
-  }, []);
+  }, [commitRecentIds]);
 
   const handleDeleteForever = useCallback((id) => {
     const remaining = documents.filter((d) => d.id !== id);
@@ -742,6 +820,7 @@ export default function App() {
         : null;
 
     setDocuments(remaining);
+    currentDocIdRef.current = nextCurrent;
     setCurrentDocId(nextCurrent);
 
     const nextRecents = recentIdsRef.current.filter((recentId) => recentId !== id);
@@ -757,6 +836,7 @@ export default function App() {
     setDocuments(remaining);
     if (currentId && !currentStillValid) {
       const nextCurrent = remaining[0]?.id || null;
+      currentDocIdRef.current = nextCurrent;
       setCurrentDocId(nextCurrent);
       if (nextCurrent && !recentIdsRef.current.includes(nextCurrent)) {
         const nextRecents = [...recentIdsRef.current, nextCurrent].slice(-MAX_RECENTS);
@@ -777,7 +857,8 @@ export default function App() {
       doc.title || 'Untitled template'
     );
     if (!name) return;
-    const tpl = createTemplate(name.trim(), doc.content || '');
+    const latestContent = pendingContentRef.current.get(doc.id) ?? doc.content ?? '';
+    const tpl = createTemplate(name.trim(), latestContent);
     setTemplates((prev) => [tpl, ...prev]);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 1200);
@@ -788,16 +869,15 @@ export default function App() {
     const doc = createDocument(tpl.title || 'Untitled note');
     doc.content = tpl.content || '';
     setDocuments((docs) => [doc, ...docs]);
+    currentDocIdRef.current = doc.id;
     setCurrentDocId(doc.id);
 
     // Template-created doc also lands in the bar
-    setRecentIds((prev) => {
+    commitRecentIds((prev) => {
       if (prev.includes(doc.id)) return prev;
-      const next = [...prev, doc.id].slice(-MAX_RECENTS);
-      saveRecents(next);
-      return next;
+      return [...prev, doc.id].slice(-MAX_RECENTS);
     });
-  }, [flushSave]);
+  }, [flushSave, commitRecentIds]);
 
   const handleDeleteTemplate = useCallback((id) => {
     setTemplates((prev) => prev.filter((t) => t.id !== id));
@@ -807,21 +887,22 @@ export default function App() {
 
   const handleExportHtml = useCallback(() => {
     const doc = documents.find((d) => d.id === currentDocIdRef.current);
-    if (doc) exportDocumentAsHtml(doc);
+    if (doc) exportDocumentAsHtml({ ...doc, content: pendingContentRef.current.get(doc.id) ?? doc.content });
   }, [documents]);
 
   const handleExportJson = useCallback(() => {
     const doc = documents.find((d) => d.id === currentDocIdRef.current);
-    if (doc) exportDocumentAsJson(doc);
+    if (doc) exportDocumentAsJson({ ...doc, content: pendingContentRef.current.get(doc.id) ?? doc.content });
   }, [documents]);
 
   const handleExportMarkdown = useCallback(() => {
     const doc = documents.find((d) => d.id === currentDocIdRef.current);
-    if (doc) exportDocumentAsMarkdown(doc);
+    if (doc) exportDocumentAsMarkdown({ ...doc, content: pendingContentRef.current.get(doc.id) ?? doc.content });
   }, [documents]);
 
   const handleExportBackup = useCallback(() => {
-    exportBackup(documents, templates);
+    const snapshot = applyPendingContent(documents, pendingContentRef.current);
+    exportBackup(snapshot, templates);
   }, [documents, templates]);
 
   const handleImportFile = useCallback(
@@ -829,17 +910,16 @@ export default function App() {
       flushSave();
       const doc = await importFromFile(file);
       setDocuments((docs) => [doc, ...docs]);
+      currentDocIdRef.current = doc.id;
       setCurrentDocId(doc.id);
 
       // Imported doc also lands in the bar
-      setRecentIds((prev) => {
+      commitRecentIds((prev) => {
         if (prev.includes(doc.id)) return prev;
-        const next = [...prev, doc.id].slice(-MAX_RECENTS);
-        saveRecents(next);
-        return next;
+        return [...prev, doc.id].slice(-MAX_RECENTS);
       });
     },
-    [flushSave]
+    [flushSave, commitRecentIds]
   );
 
   const handleImportFiles = useCallback(async (files) => {
@@ -850,13 +930,10 @@ export default function App() {
     for (const file of selected) imported.push(await importFromFile(file));
     setDocuments((docs) => [...imported, ...docs]);
     const last = imported[imported.length - 1];
+    currentDocIdRef.current = last.id;
     setCurrentDocId(last.id);
-    setRecentIds((prev) => {
-      const next = [...prev, ...imported.map((doc) => doc.id)].slice(-MAX_RECENTS);
-      saveRecents(next);
-      return next;
-    });
-  }, [flushSave]);
+    commitRecentIds((prev) => [...prev, ...imported.map((doc) => doc.id)].slice(-MAX_RECENTS));
+  }, [flushSave, commitRecentIds]);
 
   const handleImportBackup = useCallback(async (file) => {
     const backup = await importBackupFile(file);
@@ -865,13 +942,10 @@ export default function App() {
     setDocuments((docs) => [...backup.documents, ...docs]);
     setTemplates((prev) => [...backup.templates, ...prev]);
     const first = backup.documents[0];
+    currentDocIdRef.current = first.id;
     setCurrentDocId(first.id);
-    setRecentIds((prev) => {
-      const next = [...prev, ...backup.documents.map((doc) => doc.id)].slice(-MAX_RECENTS);
-      saveRecents(next);
-      return next;
-    });
-  }, [flushSave]);
+    commitRecentIds((prev) => [...prev, ...backup.documents.map((doc) => doc.id)].slice(-MAX_RECENTS));
+  }, [flushSave, commitRecentIds]);
 
   const handleDropFiles = useCallback(async (event) => {
     event.preventDefault();
@@ -896,6 +970,11 @@ export default function App() {
   const clearCelebration = useCallback(() => {
     setCelebration(null);
   }, []);
+
+  const closeDocumentsModal = useCallback(() => setDocsModalOpen(false), []);
+  const closeTemplatesModal = useCallback(() => setTemplatesModalOpen(false), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const dismissUndo = useCallback(() => setUndoPayload(null), []);
 
   /* Global shortcuts */
 
@@ -929,7 +1008,8 @@ export default function App() {
       event.preventDefault();
       const currentIndex = ids.indexOf(currentDocIdRef.current);
       const direction = event.shiftKey ? -1 : 1;
-      const nextId = ids[(currentIndex + direction + ids.length) % ids.length];
+      const startIndex = currentIndex < 0 ? (direction > 0 ? -1 : 0) : currentIndex;
+      const nextId = ids[(startIndex + direction + ids.length) % ids.length];
       handleSelectDocument(nextId);
     };
     document.addEventListener('keydown', onKey);
@@ -937,20 +1017,36 @@ export default function App() {
   }, [documents, handleSelectDocument]);
 
   const handleTouchStart = useCallback((event) => {
-    if (event.touches.length === 1) touchStartRef.current = event.touches[0].clientX;
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const edgeSize = 28;
+    const fromEdge = touch.clientX <= edgeSize || touch.clientX >= window.innerWidth - edgeSize;
+    touchStartRef.current = fromEdge ? { x: touch.clientX, y: touch.clientY } : null;
   }, []);
 
   const handleTouchEnd = useCallback((event) => {
     if (touchStartRef.current === null) return;
-    const delta = event.changedTouches[0].clientX - touchStartRef.current;
+    const touch = event.changedTouches[0];
+    const delta = touch.clientX - touchStartRef.current.x;
+    const verticalDelta = touch.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
-    if (Math.abs(delta) < 70) return;
+    if (Math.abs(delta) < 70 || Math.abs(verticalDelta) > 50) return;
     const ids = recentIdsRef.current.filter((id) => documents.some((doc) => doc.id === id && !doc.deletedAt));
     const index = ids.indexOf(currentDocIdRef.current);
     if (index < 0 || ids.length < 2) return;
     const nextId = ids[(index + (delta < 0 ? 1 : -1) + ids.length) % ids.length];
     handleSelectDocument(nextId);
   }, [documents, handleSelectDocument]);
+
+  if (bootError) {
+    return (
+      <div className="app app--loading">
+        <div className="app-loading">
+          {bootError} Your notes were not modified. Reload the page to try again.
+        </div>
+      </div>
+    );
+  }
 
   if (!booted) {
     return (
@@ -1025,7 +1121,7 @@ export default function App() {
           onTouchEnd={handleTouchEnd}
         >
           {isDraggingFile && <div className="file-drop-overlay">Drop files to import</div>}
-        {currentDocId ? (
+        {currentDoc ? (
           <SlackEditor
             key={currentDocId}
             docId={currentDocId}
@@ -1062,7 +1158,7 @@ export default function App() {
 
       <DocumentsModal
         open={docsModalOpen}
-        onClose={() => setDocsModalOpen(false)}
+        onClose={closeDocumentsModal}
         documents={documents}
         currentDocId={currentDocId}
         onSelect={handleSelectDocument}
@@ -1078,7 +1174,7 @@ export default function App() {
 
       <TemplatesModal
         open={templatesModalOpen}
-        onClose={() => setTemplatesModalOpen(false)}
+        onClose={closeTemplatesModal}
         templates={templates}
         currentDocTitle={currentDoc?.title}
         onUseTemplate={handleUseTemplate}
@@ -1088,7 +1184,7 @@ export default function App() {
 
       <CommandPalette
         open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
+        onClose={closePalette}
         documents={documents}
         currentDocId={currentDocId}
         onSelectDocument={handleSelectDocument}
@@ -1116,7 +1212,7 @@ export default function App() {
       {undoPayload && (
         <UndoToast
           payload={undoPayload}
-          onDismiss={() => setUndoPayload(null)}
+          onDismiss={dismissUndo}
         />
       )}
 

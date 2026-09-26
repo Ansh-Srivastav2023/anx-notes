@@ -368,21 +368,9 @@ export default function DocumentMenu({
             </span>
           </button>
 
-          {onOpenShortcuts && (
-            <button
-              type="button"
-              role="menuitem"
-              className="doc-menu-item"
-              onClick={() => executeAction(onOpenShortcuts)}
-            >
-              <span>Keyboard shortcuts</span>
-              <kbd className="doc-menu-kbd">ctrl+/</kbd>
-            </button>
-          )}
-
           <div className="doc-menu-sep" />
 
-                    {onOpenShortcuts && (
+          {onOpenShortcuts && (
             <button
               type="button"
               role="menuitem"

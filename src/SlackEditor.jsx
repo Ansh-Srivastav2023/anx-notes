@@ -93,7 +93,7 @@ export default function SlackEditor({
     },
     content: initialContent,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML());
+      onChange?.(editor.getHTML(), docId);
     },
     onSelectionUpdate: ({ editor }) => {
       if (!restoredEditorsRef.current.has(editor)) return;

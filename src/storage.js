@@ -4,28 +4,81 @@ const DOCS_KEY = 'anx-notes.docs';
 const TEMPLATES_KEY = 'anx-notes.templates';
 const CURRENT_KEY = 'anx-notes.currentDocId';
 const TRASH_RETENTION_DAYS = 30;
+let documentsWriteQueue = Promise.resolve();
+let templatesWriteQueue = Promise.resolve();
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function normalizeDocuments(value) {
+  if (!Array.isArray(value)) return [];
+  const seenIds = new Set();
+  return value
+    .filter((doc) => doc && typeof doc === 'object')
+    .map((doc) => {
+      let id = typeof doc.id === 'string' && doc.id ? doc.id : uid();
+      if (seenIds.has(id)) id = uid();
+      seenIds.add(id);
+      const now = Date.now();
+      return {
+        ...doc,
+        id,
+        title: typeof doc.title === 'string' ? doc.title : 'Untitled note',
+        content: typeof doc.content === 'string' ? doc.content : '',
+        createdAt: Number.isFinite(doc.createdAt) ? doc.createdAt : now,
+        updatedAt: Number.isFinite(doc.updatedAt) ? doc.updatedAt : now,
+        deletedAt: Number.isFinite(doc.deletedAt) ? doc.deletedAt : null,
+        pinned: Boolean(doc.pinned),
+        tags: Array.isArray(doc.tags)
+          ? [...new Set(doc.tags.filter((tag) => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))]
+          : [],
+        folder: typeof doc.folder === 'string' ? doc.folder : '',
+      };
+    });
+}
+
+function normalizeTemplates(value) {
+  if (!Array.isArray(value)) return [];
+  const seenIds = new Set();
+  return value
+    .filter((template) => template && typeof template === 'object')
+    .map((template) => {
+      let id = typeof template.id === 'string' && template.id ? template.id : uid();
+      if (seenIds.has(id)) id = uid();
+      seenIds.add(id);
+      return {
+        ...template,
+        id,
+        title: typeof template.title === 'string' && template.title ? template.title : 'Untitled template',
+        content: typeof template.content === 'string' ? template.content : '',
+        createdAt: Number.isFinite(template.createdAt) ? template.createdAt : Date.now(),
+      };
+    });
 }
 
 /* ---------------- IndexedDB docs ---------------- */
 
 export async function loadDocuments() {
   try {
-    const docs = await get(DOCS_KEY);
-    if (!Array.isArray(docs)) return [];
+    const docs = normalizeDocuments(await get(DOCS_KEY));
     // Purge anything older than retention
     const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
     return docs.filter((d) => !d.deletedAt || d.deletedAt > cutoff);
   } catch {
-    return [];
+    throw new Error('Could not read documents from browser storage.');
   }
 }
 
 export async function saveDocuments(docs) {
+  // IndexedDB writes are asynchronous. Queue them so an older save cannot
+  // finish after a newer save and restore stale document contents.
+  const snapshot = normalizeDocuments(docs).map((doc) => ({ ...doc, tags: [...doc.tags] }));
+  documentsWriteQueue = documentsWriteQueue
+    .catch(() => undefined)
+    .then(() => set(DOCS_KEY, snapshot));
   try {
-    await set(DOCS_KEY, docs);
+    await documentsWriteQueue;
     return true;
   } catch (e) {
     console.error('saveDocuments failed', e);
@@ -35,22 +88,31 @@ export async function saveDocuments(docs) {
 
 export async function loadTemplates() {
   try {
-    const t = await get(TEMPLATES_KEY);
-    return Array.isArray(t) ? t : [];
+    return normalizeTemplates(await get(TEMPLATES_KEY));
   } catch {
-    return [];
+    throw new Error('Could not read templates from browser storage.');
   }
 }
 
 export async function saveTemplates(templates) {
+  const snapshot = normalizeTemplates(templates);
+  templatesWriteQueue = templatesWriteQueue
+    .catch(() => undefined)
+    .then(() => set(TEMPLATES_KEY, snapshot));
   try {
-    await set(TEMPLATES_KEY, templates);
+    await templatesWriteQueue;
+    return true;
   } catch (e) {
     console.error('saveTemplates failed', e);
+    return false;
   }
 }
 
 export async function clearAllStorage() {
+  await Promise.all([
+    documentsWriteQueue.catch(() => undefined),
+    templatesWriteQueue.catch(() => undefined),
+  ]);
   await del(DOCS_KEY);
   await del(TEMPLATES_KEY);
   try {
@@ -337,7 +399,7 @@ export async function importBackupFile(file) {
       tags: Array.isArray(source.tags) ? source.tags.filter((tag) => typeof tag === 'string') : [],
       folder: typeof source.folder === 'string' ? source.folder : '',
     })),
-    templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+    templates: normalizeTemplates(parsed.templates).map((template) => createTemplate(template.title, template.content)),
   };
 }
 
