@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { icons } from './icons';
 import { FONT_FAMILIES, FONT_SIZES } from './fontOptions';
 import { toggleTaskListSmart } from './taskList';
+import TablePicker from './TablePicker';
 
 /* ---------------------------------------------------------------- */
 /*  Toolbar primitives                                               */
@@ -39,12 +41,38 @@ function ToolbarDropdown({
   previewStyle,
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const ref = useRef(null);
+  const menuRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+
+    const updatePosition = () => {
+      const trigger = ref.current?.querySelector('.tool-dropdown-trigger');
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setMenuPosition({
+        left: rect.left,
+        bottom: Math.max(8, window.innerHeight - rect.top + 8),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
     const onDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      const clickedTrigger = ref.current?.contains(e.target);
+      const clickedMenu = menuRef.current?.contains(e.target);
+      if (!clickedTrigger && !clickedMenu) setOpen(false);
     };
     const onKey = (e) => {
       if (e.key === 'Escape') setOpen(false);
@@ -67,6 +95,7 @@ function ToolbarDropdown({
         style={{ width }}
         aria-label={label}
         aria-expanded={open}
+        onMouseDown={(event) => event.preventDefault()}
         onClick={() => setOpen((o) => !o)}
       >
         <span className="tool-dropdown-label" style={previewStyle}>
@@ -75,8 +104,17 @@ function ToolbarDropdown({
         <span className="tool-dropdown-caret">{icons.chevron}</span>
       </button>
 
-      {open && (
-        <div className="tool-dropdown-menu" role="menu" style={{ minWidth: width }}>
+      {open && menuPosition && createPortal(
+        <div
+          ref={menuRef}
+          className="tool-dropdown-menu tool-dropdown-menu--portal"
+          role="menu"
+          style={{
+            minWidth: width,
+            left: menuPosition.left,
+            bottom: menuPosition.bottom,
+          }}
+        >
           {options.map((opt) => (
             <button
               key={opt.value || 'default'}
@@ -85,6 +123,7 @@ function ToolbarDropdown({
               className="tool-dropdown-item"
               data-selected={opt.value === value ? 'true' : 'false'}
               style={opt.style}
+              onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 onSelect(opt.value);
                 setOpen(false);
@@ -93,10 +132,29 @@ function ToolbarDropdown({
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
+}
+
+function applyFontFamily(editor, value) {
+  const chain = editor.chain().focus();
+  if (value) chain.setFontFamily(value);
+  else chain.unsetFontFamily();
+  const result = chain.run();
+  if (editor.storage?.stickyMarks) editor.storage.stickyMarks.fontFamily = value || null;
+  return result;
+}
+
+function applyFontSize(editor, value) {
+  const chain = editor.chain().focus();
+  if (value) chain.setFontSize(value);
+  else chain.unsetFontSize();
+  const result = chain.run();
+  if (editor.storage?.stickyMarks) editor.storage.stickyMarks.fontSize = value || null;
+  return result;
 }
 
 /* ---------------------------------------------------------------- */
@@ -104,15 +162,15 @@ function ToolbarDropdown({
 /* ---------------------------------------------------------------- */
 export default function MenuBar({
   editor,
-  helpBtnRef,
-  setHelpOpen,
-  onOpenFind,
   outlineOpen = false,
   onToggleOutline = () => {},
   readMode = false,
   onToggleReadMode = () => {},
 }) {
   const [, forceRender] = useState(0);
+  const [formattingOpen, setFormattingOpen] = useState(false);
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const toolbarRef = useRef(null);
 
   useEffect(() => {
     if (!editor) return undefined;
@@ -123,131 +181,82 @@ export default function MenuBar({
     };
   }, [editor]);
 
+  useEffect(() => {
+    if (!formattingOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      const clickedToolbar = toolbarRef.current?.contains(event.target);
+      const clickedDropdown = event.target instanceof Element
+        && event.target.closest('.tool-dropdown-menu--portal');
+      if (!clickedToolbar && !clickedDropdown) setFormattingOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [formattingOpen]);
+
   if (!editor) return null;
 
   const activeFamily = editor.getAttributes('textStyle').fontFamily || '';
   const activeSize = editor.getAttributes('textStyle').fontSize || '';
 
   return (
-    <div className="toolbar" role="toolbar" aria-label="Formatting">
-      <ToolButton
-        label="Undo"
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-      >
-        {icons.undo}
-      </ToolButton>
-      <ToolButton
-        label="Redo"
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-      >
-        {icons.redo}
-      </ToolButton>
+    <div ref={toolbarRef} className="toolbar" role="toolbar" aria-label="Formatting" data-expanded={formattingOpen || tablePickerOpen ? 'true' : 'false'}>
+      {formattingOpen && (
+        <div className="toolbar-advanced" aria-label="Advanced formatting">
+          <ToolButton label="Undo" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>{icons.undo}</ToolButton>
+          <ToolButton label="Redo" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}>{icons.redo}</ToolButton>
+          <span className="tool-sep" />
+          <ToolbarDropdown label="Font family" value={activeFamily} options={FONT_FAMILIES} width={116} previewStyle={{ fontFamily: activeFamily || 'inherit' }} onSelect={(v) => applyFontFamily(editor, v)} />
+          <ToolbarDropdown label="Font size" value={activeSize} options={FONT_SIZES} width={76} onSelect={(v) => applyFontSize(editor, v)} />
+          <span className="tool-sep" />
+          <ToolButton label="Heading 1" wide active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>H1</ToolButton>
+          <ToolButton label="Heading 2" wide active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolButton>
+          <ToolButton label="Heading 3" wide active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</ToolButton>
+          <span className="tool-sep" />
+          <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>{icons.underline}</ToolButton>
+          <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}>{icons.strike}</ToolButton>
+          <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}>{icons.code}</ToolButton>
+          <ToolButton label="Code block" active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>{icons.codeBlock}</ToolButton>
+          <ToolButton label="Quote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>{icons.quote}</ToolButton>
+          <ToolButton label="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}>{icons.divider}</ToolButton>
+        </div>
+      )}
 
-      <span className="tool-sep" />
-
-      <ToolbarDropdown
-        label="Font family"
-        value={activeFamily}
-        options={FONT_FAMILIES}
-        width={120}
-        previewStyle={{ fontFamily: activeFamily || 'inherit' }}
-        onSelect={(v) => editor.chain().focus().setStickyFontFamily(v).run()}
-      />
-      <ToolbarDropdown
-        label="Font size"
-        value={activeSize}
-        options={FONT_SIZES}
-        width={86}
-        onSelect={(v) => editor.chain().focus().setStickyFontSize(v).run()}
-      />
-
-      <span className="tool-sep" />
-
-      <ToolButton label="Heading 1" wide active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>H1</ToolButton>
-      <ToolButton label="Heading 2" wide active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolButton>
-      <ToolButton label="Heading 3" wide active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</ToolButton>
-
-      <span className="tool-sep" />
-
-      <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>{icons.bold}</ToolButton>
-      <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}>{icons.italic}</ToolButton>
-      <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>{icons.underline}</ToolButton>
-      <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}>{icons.strike}</ToolButton>
-      <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}>{icons.code}</ToolButton>
-
-      <span className="tool-sep" />
-
-      <ToolButton label="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}>{icons.alignLeft}</ToolButton>
-      <ToolButton label="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}>{icons.alignCenter}</ToolButton>
-      <ToolButton label="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}>{icons.alignRight}</ToolButton>
-      <ToolButton label="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}>{icons.alignJustify}</ToolButton>
-
-      <span className="tool-sep" />
-
-      <ToolButton label="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>{icons.bulletList}</ToolButton>
-      <ToolButton label="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>{icons.orderedList}</ToolButton>
-      <ToolButton
-        label="Checklist"
-        active={editor.isActive('taskList')}
-        onClick={() => toggleTaskListSmart(editor)}
-      >
-        {icons.checklist}
-      </ToolButton>
-
-      <ToolButton label="Quote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>{icons.quote}</ToolButton>
-      <ToolButton label="Code block" active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>{icons.codeBlock}</ToolButton>
-
-      <span className="tool-sep" />
-
-      <ToolButton label="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}>{icons.divider}</ToolButton>
-      <ToolButton
-        label="Insert table"
-        onClick={() =>
-          editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-        }
-      >
-        {icons.table}
-      </ToolButton>
-
-      <span className="toolbar-spacer" />
-
-      <ToolButton
-        label="Find and replace (Ctrl+F)"
-        onClick={onOpenFind}
-        mod="find"
-      >
-        {icons.search}
-      </ToolButton>
-
-      <ToolButton
-        label={readMode ? 'Exit read mode (Ctrl+Shift+R)' : 'Read mode (Ctrl+Shift+R)'}
-        active={readMode}
-        onClick={onToggleReadMode}
-        mod="readmode"
-      >
-        {icons.bookOpen}
-      </ToolButton>
-
-      <ToolButton
-        label={outlineOpen ? 'Hide outline' : 'Show outline'}
-        active={outlineOpen}
-        onClick={onToggleOutline}
-        mod="outline"
-      >
-        {icons.outline}
-      </ToolButton>
-
-      <span ref={helpBtnRef} style={{ display: 'inline-flex' }}>
-        <ToolButton
-          label="Keyboard shortcuts (Ctrl+/)"
-          onClick={() => setHelpOpen((o) => !o)}
-          mod="help"
+      <div className="toolbar-primary">
+        <button
+          type="button"
+          className="tool-btn tool-btn--format"
+          data-active={formattingOpen ? 'true' : 'false'}
+          aria-expanded={formattingOpen}
+          aria-label="More formatting"
+          title="More formatting"
+          onClick={() => setFormattingOpen((open) => !open)}
         >
-          {icons.help}
-        </ToolButton>
-      </span>
+          Aa
+        </button>
+        <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => toggleTaskListSmart(editor)}>{icons.checklist}</ToolButton>
+        <span className="toolbar-table-picker">
+          <ToolButton label="Insert table" active={tablePickerOpen} onClick={() => setTablePickerOpen((open) => !open)}>{icons.table}</ToolButton>
+          {tablePickerOpen && (
+            <TablePicker
+              onClose={() => setTablePickerOpen(false)}
+              onSelect={(rows, cols) => {
+                editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+                setTablePickerOpen(false);
+              }}
+            />
+          )}
+        </span>
+        <span className="tool-sep" />
+        <ToolButton label="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}>{icons.alignLeft}</ToolButton>
+        <ToolButton label="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}>{icons.alignCenter}</ToolButton>
+        <ToolButton label="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}>{icons.alignRight}</ToolButton>
+        <ToolButton label="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}>{icons.alignJustify}</ToolButton>
+        <ToolButton label="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>{icons.bulletList}</ToolButton>
+        <ToolButton label="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>{icons.orderedList}</ToolButton>
+        <span className="tool-sep" />
+        <ToolButton label={readMode ? 'Exit read mode' : 'Read mode'} active={readMode} onClick={onToggleReadMode} mod="readmode">{icons.bookOpen}</ToolButton>
+        <ToolButton label={outlineOpen ? 'Hide outline' : 'Show outline'} active={outlineOpen} onClick={onToggleOutline} mod="outline">{icons.outline}</ToolButton>
+      </div>
     </div>
   );
 }

@@ -3,6 +3,25 @@ import React, { useEffect, useRef, useState } from 'react';
 const DRAG_THRESHOLD = 5;
 const GRIP_OFFSET_LEFT = 34;      // px left of a block's edge
 
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
+function makeBlockId() {
+  return globalThis.crypto?.randomUUID?.() || `block-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function GripIcon() {
   return (
     <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
@@ -13,18 +32,60 @@ function GripIcon() {
   );
 }
 
-export default function BlockDragHandles({ editor }) {
+function MenuIcon({ type }) {
+  const paths = {
+    link: <><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1" /><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1" /></>,
+    callout: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></>,
+    copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></>,
+    section: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></>,
+    remove: <><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /></>,
+  };
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[type]}
+    </svg>
+  );
+}
+
+export default function BlockDragHandles({ editor, docId }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   const [drag, setDrag] = useState(null);       // { fromIndex, x, y }
   const [targetIndex, setTargetIndex] = useState(null);
   const [blocks, setBlocks] = useState([]);
+  const [menu, setMenu] = useState(null);
+  const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
 
   const pendingRef = useRef(null);
   const dragRef = useRef(null);
   const targetRef = useRef(null);
+  const menuRef = useRef(null);
+  const menuStateRef = useRef(null);
 
   useEffect(() => { dragRef.current = drag; }, [drag]);
   useEffect(() => { targetRef.current = targetIndex; }, [targetIndex]);
+  useEffect(() => { menuStateRef.current = menu; }, [menu]);
+
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = (event) => {
+      if (!menuRef.current?.contains(event.target)) {
+        setMenu(null);
+        setSectionMenuOpen(false);
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        setMenu(null);
+        setSectionMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
 
   /* ------------------------------------------------------------------ */
   /*  Cache geometry of every top-level block                            */
@@ -43,6 +104,7 @@ export default function BlockDragHandles({ editor }) {
             list.push({
               index,
               offset,
+              node,
               type: node.type.name,
               top: rect.top,
               bottom: rect.bottom,
@@ -85,7 +147,7 @@ export default function BlockDragHandles({ editor }) {
     const GRIP_HOLD_RADIUS = 8;
 
     const onMove = (e) => {
-      if (dragRef.current) return;
+      if (dragRef.current || menuStateRef.current) return;
 
       // Keep the grip visible while the cursor is over the grip itself —
       // otherwise moving toward it makes it disappear before you can grab it.
@@ -172,6 +234,16 @@ export default function BlockDragHandles({ editor }) {
       const tgt = targetRef.current;
       if (dg && tgt !== null && dg.fromIndex !== tgt) {
         editor.chain().focus().moveBlock(dg.fromIndex, tgt).run();
+      } else if (!dg && pendingRef.current) {
+        const block = blocks[pendingRef.current.blockIndex];
+        if (block) {
+          setMenu({
+            blockIndex: pendingRef.current.blockIndex,
+            x: block.left - 4,
+            y: block.top,
+          });
+          setSectionMenuOpen(false);
+        }
       }
       pendingRef.current = null;
       dragRef.current = null;
@@ -209,6 +281,51 @@ export default function BlockDragHandles({ editor }) {
       startX: e.clientX,
       startY: e.clientY,
     };
+  };
+
+  const closeMenu = () => {
+    setMenu(null);
+    setSectionMenuOpen(false);
+  };
+
+  const selectedBlock = menu ? blocks[menu.blockIndex] : null;
+
+  const handleCopyLink = async () => {
+    if (!selectedBlock) return;
+    const blockId = selectedBlock.node.attrs.blockId || makeBlockId();
+    editor.commands.ensureBlockIdAt(selectedBlock.offset, blockId);
+    const url = new URL(window.location.href);
+    const params = new URLSearchParams();
+    params.set('doc', docId);
+    params.set('block', blockId);
+    params.set('index', String(menu.blockIndex));
+    url.hash = params.toString();
+    await copyText(url.toString());
+    closeMenu();
+  };
+
+  const handleCopyBlock = async () => {
+    if (!selectedBlock) return;
+    await copyText(selectedBlock.node.textContent || '');
+    closeMenu();
+  };
+
+  const handleCallout = () => {
+    if (!selectedBlock) return;
+    editor.chain().focus().toggleCalloutAt(selectedBlock.offset).run();
+    closeMenu();
+  };
+
+  const handleAddSection = (side) => {
+    if (!selectedBlock) return;
+    editor.chain().focus().addSectionAt(selectedBlock.offset, side).run();
+    closeMenu();
+  };
+
+  const handleRemove = () => {
+    if (!selectedBlock) return;
+    editor.chain().focus().removeBlockAt(selectedBlock.offset).run();
+    closeMenu();
   };
 
   /* ------------------------------------------------------------------ */
@@ -261,6 +378,52 @@ export default function BlockDragHandles({ editor }) {
       )}
 
       {indicator}
+
+      {menu && selectedBlock && (
+        <div
+          ref={menuRef}
+          className="block-action-menu"
+          role="menu"
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(menu.x, window.innerWidth - 264)),
+            top: Math.max(8, Math.min(menu.y, window.innerHeight - 330)),
+          }}
+        >
+          <button type="button" className="block-action-item" role="menuitem" onClick={handleCopyLink}>
+            <MenuIcon type="link" /><span>Copy link to section</span>
+          </button>
+          <div className="block-action-separator" />
+          <button type="button" className="block-action-item" role="menuitem" onClick={handleCallout}>
+            <MenuIcon type="callout" /><span>{selectedBlock.type === 'callout' ? 'Remove callout' : 'Add callout'}</span>
+          </button>
+          <button type="button" className="block-action-item" role="menuitem" onClick={handleCopyBlock}>
+            <MenuIcon type="copy" /><span>Copy section</span>
+          </button>
+          <div className="block-action-submenu-wrap">
+            <button
+              type="button"
+              className="block-action-item"
+              role="menuitem"
+              aria-expanded={sectionMenuOpen}
+              onClick={() => setSectionMenuOpen((open) => !open)}
+            >
+              <MenuIcon type="section" /><span>Add section</span><span className="block-action-chevron">›</span>
+            </button>
+            {sectionMenuOpen && (
+              <div className="block-action-submenu" role="menu">
+                <button type="button" className="block-action-item" role="menuitem" onClick={() => handleAddSection('left')}>Add to left</button>
+                <button type="button" className="block-action-item" role="menuitem" onClick={() => handleAddSection('right')}>Add to right</button>
+              </div>
+            )}
+          </div>
+          <div className="block-action-separator" />
+          <button type="button" className="block-action-item block-action-item--danger" role="menuitem" onClick={handleRemove}>
+            <MenuIcon type="remove" /><span>Remove</span>
+          </button>
+          <div className="block-action-footer">Click and drag the grip to reorder</div>
+        </div>
+      )}
 
       {drag && (
         <div

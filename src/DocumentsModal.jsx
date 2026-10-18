@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { stripHtml } from './storage';
+import { getSearchTerms, matchesSearch, normalizeSearchText } from './searchUtils';
 
 function SearchIcon() {
   return (
@@ -62,13 +63,21 @@ function formatDate(ts) {
 
 /* Highlight every occurrence of `q` inside `text` */
 function Highlight({ text, query }) {
-  if (!query) return text;
-  const q = query.toLowerCase();
-  const lower = text.toLowerCase();
+  const terms = getSearchTerms(query);
+  if (!terms.length) return text;
+  const lower = normalizeSearchText(text);
   const parts = [];
   let i = 0;
   while (i < text.length) {
-    const idx = lower.indexOf(q, i);
+    let idx = -1;
+    let matchedTerm = '';
+    terms.forEach((term) => {
+      const candidate = lower.indexOf(term, i);
+      if (candidate !== -1 && (idx === -1 || candidate < idx)) {
+        idx = candidate;
+        matchedTerm = term;
+      }
+    });
     if (idx === -1) {
       parts.push(text.slice(i));
       break;
@@ -76,10 +85,10 @@ function Highlight({ text, query }) {
     if (idx > i) parts.push(text.slice(i, idx));
     parts.push(
       <mark key={idx} className="docs-modal-mark">
-        {text.slice(idx, idx + q.length)}
+        {text.slice(idx, idx + matchedTerm.length)}
       </mark>
     );
-    i = idx + q.length;
+    i = idx + matchedTerm.length;
   }
   return parts;
 }
@@ -87,8 +96,11 @@ function Highlight({ text, query }) {
 /* Build a short snippet around the first match */
 function buildSnippet(html, query) {
   const plain = stripHtml(html || '');
-  if (!query) return plain.slice(0, 120);
-  const idx = plain.toLowerCase().indexOf(query.toLowerCase());
+  const terms = getSearchTerms(query);
+  if (!terms.length) return plain.slice(0, 120);
+  const normalized = normalizeSearchText(plain);
+  const positions = terms.map((term) => normalized.indexOf(term)).filter((idx) => idx >= 0);
+  const idx = positions.length ? Math.min(...positions) : -1;
   if (idx === -1) return plain.slice(0, 120);
   const start = Math.max(0, idx - 30);
   return (start > 0 ? '… ' : '') + plain.slice(start, start + 120);
@@ -164,13 +176,15 @@ export default function DocumentsModal({
     const sorted = source
       .slice()
       .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.updatedAt - a.updatedAt);
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return sorted;
-    return sorted.filter((d) => {
-      if ((d.title || '').toLowerCase().includes(q)) return true;
-      const plain = stripHtml(d.content || '').toLowerCase();
-      return plain.includes(q) || (d.tags || []).some((tag) => tag.toLowerCase().includes(q)) || (d.folder || '').toLowerCase().includes(q);
-    });
+    return sorted.filter((d) => matchesSearch(
+      q,
+      d.title,
+      stripHtml(d.content || ''),
+      d.tags,
+      d.folder
+    ));
   }, [tab, activeDocs, trashedDocs, query]);
 
   if (!open) return null;

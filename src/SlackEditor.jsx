@@ -17,17 +17,28 @@ import { TableDrag } from './TableDrag';
 import { StickyMarks } from './StickyMarks';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { BlockDrag } from './BlockDrag';
+import { BlockFeatures, Callout, SectionColumn, SectionGroup } from './BlockFeatures';
 import { SlashCommands } from './SlashCommands';
 
-import ShortcutsHelp from './ShortcutsHelp';
 import TableDragHandles from './TableDragHandles';
 import BlockDragHandles from './BlockDragHandles';
 import MenuBar from './editor/MenuBar';
 import StatusBar from './editor/StatusBar';
 import Outline from './editor/Outline';
 
-import { FindReplace } from './editor/FindReplaceExtension';
-import FindReplaceBar from './editor/FindReplace';
+const EDITOR_ZOOM_KEY = 'anx-notes.editorZoom';
+const MIN_ZOOM = 70;
+const MAX_ZOOM = 160;
+const ZOOM_STEP = 10;
+
+function loadEditorZoom() {
+  try {
+    const stored = Number.parseInt(localStorage.getItem(EDITOR_ZOOM_KEY), 10);
+    return Number.isFinite(stored) ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, stored)) : 100;
+  } catch {
+    return 100;
+  }
+}
 
 export default function SlackEditor({
   docId,
@@ -43,13 +54,15 @@ export default function SlackEditor({
   setOutlineOpen = () => {},
 }) {
   const scrollRef = useRef(null);
-  const helpBtnRef = useRef(null);
-  const [findOpen, setFindOpen] = useState(false);
-
+  const [zoom, setZoom] = useState(loadEditorZoom);
   const onSelectionChangeRef = useRef(onSelectionChange);
   useEffect(() => {
     onSelectionChangeRef.current = onSelectionChange;
   }, [onSelectionChange]);
+
+  useEffect(() => {
+    try { localStorage.setItem(EDITOR_ZOOM_KEY, String(zoom)); } catch { /* ignore */ }
+  }, [zoom]);
 
   const restoredEditorsRef = useRef(new WeakSet());
 
@@ -65,8 +78,11 @@ export default function SlackEditor({
       FontSize,
       Shortcuts,
       BlockDrag,
+      Callout,
+      SectionColumn,
+      SectionGroup,
+      BlockFeatures,
       TableDrag,
-      FindReplace,
       KeyboardShortcuts,
       TextAlign.configure({
         types: ['heading', 'paragraph', 'tableCell', 'tableHeader'],
@@ -111,6 +127,30 @@ export default function SlackEditor({
     if (!editor) return;
     editor.setEditable(!readMode);
   }, [editor, readMode]);
+
+  useEffect(() => {
+    if (!editor) return undefined;
+    const revealLinkedBlock = () => {
+      const hash = decodeURIComponent(window.location.hash || '');
+      const params = new URLSearchParams(hash.replace(/^#/, ''));
+      const linkedBlockId = params.get('block');
+      const linkedBlockIndex = Number.parseInt(params.get('index'), 10);
+      const targetId = linkedBlockId
+        ? `block-${linkedBlockId}`
+        : hash.startsWith('#block-') ? hash.slice(1) : null;
+      if (!targetId && !Number.isInteger(linkedBlockIndex)) return;
+      requestAnimationFrame(() => {
+        const target = (targetId && document.getElementById(targetId))
+          || (Number.isInteger(linkedBlockIndex)
+            ? editor.view.dom.querySelector(`:scope > :nth-child(${linkedBlockIndex + 1})`)
+            : null);
+        target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    };
+    revealLinkedBlock();
+    window.addEventListener('hashchange', revealLinkedBlock);
+    return () => window.removeEventListener('hashchange', revealLinkedBlock);
+  }, [editor, docId]);
 
   useLayoutEffect(() => {
     if (!editor) return;
@@ -168,18 +208,6 @@ export default function SlackEditor({
   }, [setHelpOpen]);
 
   useEffect(() => {
-    const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
-        e.preventDefault();
-        e.stopPropagation();
-        setFindOpen(true);
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, []);
-
-  useEffect(() => {
     if (!editor) return undefined;
 
     const onKeyDown = (e) => {
@@ -220,24 +248,22 @@ export default function SlackEditor({
   useEffect(() => {
     if (!outlineOpen) return;
     // Close if the viewport is phone-sized
-    if (typeof window !== 'undefined' && window.innerWidth <= 640) {
+    if (typeof window !== 'undefined' && window.innerWidth <= 900) {
       setOutlineOpen(false);
     }
   }, [docId, outlineOpen, setOutlineOpen]);
 
   return (
-    <div className="editor-shell" data-read-mode={readMode ? 'true' : 'false'}>
-      <FindReplaceBar
-        editor={editor}
-        open={findOpen}
-        onClose={() => setFindOpen(false)}
-      />
+    <div
+      className="editor-shell"
+      data-read-mode={readMode ? 'true' : 'false'}
+      data-outline-open={outlineOpen && !readMode ? 'true' : 'false'}
+      style={{ '--editor-zoom': zoom / 100 }}
+    >
+        <div className="toolbar-hover-zone" aria-hidden="true" />
 
         <MenuBar
           editor={editor}
-          helpBtnRef={helpBtnRef}
-          setHelpOpen={setHelpOpen}
-          onOpenFind={() => setFindOpen(true)}
           outlineOpen={outlineOpen}
           onToggleOutline={() => setOutlineOpen((o) => !o)}
           readMode={readMode}
@@ -249,7 +275,7 @@ export default function SlackEditor({
           <EditorContent editor={editor} />
         </div>
 
-        {outlineOpen && !readMode && (
+        {!readMode && (
           <Outline
             editor={editor}
             open={outlineOpen}
@@ -261,16 +287,43 @@ export default function SlackEditor({
       {!readMode && (
         <>
           <TableDragHandles editor={editor} />
-          <BlockDragHandles editor={editor} />
+          <BlockDragHandles editor={editor} docId={docId} />
           <StatusBar editor={editor} />
         </>
       )}
 
-      <ShortcutsHelp
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        anchorRef={helpBtnRef}
-      />
+      <div className="editor-zoom" role="group" aria-label="Editor zoom">
+        <button
+          type="button"
+          className="editor-zoom-button"
+          onClick={() => setZoom((value) => Math.max(MIN_ZOOM, value - ZOOM_STEP))}
+          disabled={zoom <= MIN_ZOOM}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" /></svg>
+        </button>
+        <button
+          type="button"
+          className="editor-zoom-value"
+          onClick={() => setZoom(100)}
+          aria-label={`Reset zoom, currently ${zoom}%`}
+          title="Reset to 100%"
+        >
+          {zoom}%
+        </button>
+        <button
+          type="button"
+          className="editor-zoom-button"
+          onClick={() => setZoom((value) => Math.min(MAX_ZOOM, value + ZOOM_STEP))}
+          disabled={zoom >= MAX_ZOOM}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10" /></svg>
+        </button>
+      </div>
+
     </div>
   );
 }

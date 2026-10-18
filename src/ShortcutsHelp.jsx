@@ -90,8 +90,16 @@ export default function ShortcutsHelp({ open, onClose, anchorRef }) {
   if (!open) return null;
 
   const rect = anchorRef?.current?.getBoundingClientRect();
+  const panelHeight = Math.min(window.innerHeight * 0.7, 520);
+  const panelWidth = 320;
   const style = rect
-    ? { top: rect.bottom + 8, left: Math.max(8, rect.right - 340) }
+    ? {
+        top: Math.max(8, rect.top - panelHeight - 8),
+        left: Math.min(
+          Math.max(8, rect.right - panelWidth),
+          Math.max(8, window.innerWidth - panelWidth - 8)
+        ),
+      }
     : { top: 60, right: 16 };
 
   return (

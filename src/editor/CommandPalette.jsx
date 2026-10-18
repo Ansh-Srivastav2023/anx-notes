@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { matchesSearch } from '../searchUtils';
+import { stripHtml } from '../storage';
 
 function SearchIcon() {
   return (
@@ -33,12 +35,18 @@ export default function CommandPalette({
   }, [open]);
 
   const items = useMemo(() => {
-    const q = query.toLowerCase().trim();
+    const q = query.trim();
 
     const docItems = documents
       .filter((d) => !d.deletedAt)
+      .filter((d) => matchesSearch(
+        q,
+        d.title,
+        stripHtml(d.content || ''),
+        d.tags,
+        d.folder
+      ))
       .slice(0, 40)
-      .filter((d) => !q || (d.title || '').toLowerCase().includes(q))
       .map((d) => ({
         id: `doc:${d.id}`,
         category: 'Documents',
@@ -53,9 +61,7 @@ export default function CommandPalette({
     const actionItems = actions
       .filter((a) => {
         if (!q) return true;
-        const title = (a.title || '').toLowerCase();
-        const kws = (a.keywords || []).join(' ').toLowerCase();
-        return title.includes(q) || kws.includes(q);
+        return matchesSearch(q, a.title, a.keywords);
       })
       .map((a) => ({
         id: `act:${a.id}`,

@@ -23,11 +23,21 @@ import {
 import RecentBar from './RecentBar';
 import CommandPalette from './editor/CommandPalette';
 import WelcomePage from './WelcomePage';
+import ShortcutsHelp from './ShortcutsHelp';
 
 const RECENTS_KEY = 'anx-notes.recents';
-const MAX_RECENTS = 8;
+const MAX_RECENTS = 100;
 const READMODE_KEY = 'anx-notes.readMode';
 const ACCENT_KEY = 'anx-notes.accent';
+
+function getLinkedDocumentId() {
+  try {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return params.get('doc');
+  } catch {
+    return null;
+  }
+}
 
 /* A doc counts as "blank" if it has no text content, no structural
    elements (table/image), and still carries the default title.
@@ -313,7 +323,7 @@ function getInitialTheme() {
   } catch {
     /* use the system preference */
   }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'dark';
 }
 
 function UndoToast({ payload, onDismiss }) {
@@ -394,6 +404,7 @@ export default function App() {
   const cursorPositionsRef = useRef({});
   const pendingContentRef = useRef(new Map());
   const touchStartRef = useRef(null);
+  const helpButtonRef = useRef(null);
 
   useLayoutEffect(() => {
     documentsRef.current = documents;
@@ -409,14 +420,18 @@ export default function App() {
         const initial = docs.length > 0 ? docs : [createDocument('My first note')];
         setDocuments(initial);
         setTemplates(tpls);
-        if (currentDocId) {
+        const linkedDocumentId = getLinkedDocumentId();
+        const requestedDocumentId = linkedDocumentId || currentDocId;
+        if (requestedDocumentId) {
           const target = initial.find(
-            (d) => d.id === currentDocId && !d.deletedAt
+            (d) => d.id === requestedDocumentId && !d.deletedAt
           );
           if (!target) {
             currentDocIdRef.current = null;
             setCurrentDocId(null);
           } else {
+            currentDocIdRef.current = target.id;
+            setCurrentDocId(target.id);
             // A persisted document must also have a visible tab after reload.
             commitRecentIds((prev) => {
               if (prev.includes(target.id)) return prev;
@@ -1076,6 +1091,22 @@ export default function App() {
           {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline' : 'Saved'}
         </div>
 
+        <button
+          ref={helpButtonRef}
+          type="button"
+          className="header-help-button"
+          aria-label="Keyboard shortcuts and help"
+          title="Keyboard shortcuts (Ctrl+/)"
+          aria-expanded={helpOpen}
+          onClick={() => setHelpOpen((open) => !open)}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+            <path d="M12 17h.01" />
+          </svg>
+        </button>
+
         <DocumentMenu
           documents={documents.filter((d) => !d.deletedAt)}
           currentDocId={currentDocId}
@@ -1155,6 +1186,12 @@ export default function App() {
           />
         )}
       </main>
+
+      <ShortcutsHelp
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        anchorRef={helpButtonRef}
+      />
 
       <DocumentsModal
         open={docsModalOpen}

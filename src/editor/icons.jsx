@@ -42,7 +42,6 @@ export const icons = {
     table: (<Icon><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></Icon>),
     divider: (<Icon><path d="M4 12h16" /><path d="M8 7h8" /><path d="M8 17h8" /></Icon>),
     chevron: (<Icon><path d="m6 9 6 6 6-6" /></Icon>),
-    search: (<Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></Icon>),
     help: (<Icon><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></Icon>),
     alignLeft: (<Icon><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="14" y2="12" /><line x1="4" y1="18" x2="18" y2="18" /></Icon>),
     alignCenter: (<Icon><line x1="4" y1="6" x2="20" y2="6" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></Icon>),

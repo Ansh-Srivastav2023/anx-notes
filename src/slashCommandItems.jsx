@@ -184,13 +184,13 @@ export const slashCommandItems = [
     },
   },
   {
-    title: 'Font: Comic',
-    subtitle: 'Comic Sans — playful',
-    keywords: ['font', 'comic', 'playful'],
-    icon: <FontIcon family="'Comic Sans MS', cursive" />,
+    title: 'Font: Comic Neue',
+    subtitle: 'Comic Neue — handwritten and playful',
+    keywords: ['font', 'comic', 'handwritten', 'playful'],
+    icon: <FontIcon family="'Comic Neue', 'Comic Sans MS', cursive" />,
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
-      editor.chain().focus().setStickyFontFamily('"Comic Sans MS"').run();
+      editor.chain().focus().setStickyFontFamily('"Comic Neue"').run();
     },
   },
   {
