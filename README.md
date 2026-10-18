@@ -1,1 +1,0 @@
-# anx-notes
